@@ -18,7 +18,7 @@ Supported versions: GAFE01_00: Rev 0 (USA)
 Open **MSYS2 MINGW32** from your Start menu and install:
 
 ```bash
-pacman -S mingw-w64-i686-gcc mingw-w64-i686-cmake mingw-w64-i686-SDL2
+pacman -S mingw-w64-i686-gcc mingw-w64-i686-cmake mingw-w64-i686-SDL2 mingw-w64-i686-make
 ```
 
 ## Building
