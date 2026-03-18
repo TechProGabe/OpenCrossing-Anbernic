@@ -104,6 +104,10 @@ Graphics settings are stored in `settings.ini` and can be edited manually or thr
 
 Custom textures can be placed in `texture_pack/`. Dolphin-compatible format (XXHash64, DDS).
 
+I highly recommend the following texture pack from the talented artists of Animal Crossing community.
+
+[HD Texture Pack](https://forums.dolphin-emu.org/Thread-animal-crossing-hd-texture-pack-version-23-feb-22nd-2026)
+
 ## Save Data
 
 Save files are stored in `save/` using the standard GCI format, compatible with Dolphin emulator saves. Place a Dolphin GCI export in the save directory to import an existing save.
