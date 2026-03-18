@@ -2,6 +2,8 @@
 
 PC port of Animal Crossing GameCube built on top of a 99.52% complete C decompilation.
 
+Documentation is currently outdated. Will update soon.
+
 ## Architecture Overview
 
 The game's rendering has 3 tiers:
@@ -72,58 +74,58 @@ User provides disc image (.ciso/.iso/.gcm)
 
 ## File Reference
 
-### PC Port Layer (what we wrote)
+### PC Port Layer
 
 #### Core
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `pc/src/pc_main.c` | 349 | Entry point, SDL2/GL init, VEH crash protection, CLI flags, DPI scaling |
-| `pc/src/pc_gx.c` | 1,940 | GX → OpenGL: all GX API functions, vertex submission, state, draw dispatch, dirty-flag uniform system |
-| `pc/src/pc_gx_tev.c` | 133 | TEV shader: GLSL program loading, uniform upload |
-| `pc/src/pc_gx_texture.c` | 878 | 10 GC texture format decoders, 2048-entry cache with FNV-1a |
-| `pc/src/pc_os.c` | 473 | Dolphin OS: memory arena, timers, calendar time, message queues, thread stubs |
-| `pc/src/pc_mtx.c` | 571 | C matrix math replacing PPC paired-singles assembly |
-| `pc/src/pc_misc.c` | 222 | HW register arrays, EXI/SI/PPC stubs, malloc wrappers, trig |
+| File | Purpose |
+|------|---------|
+| `pc/src/pc_main.c` | Entry point, SDL2/GL init, VEH crash protection, CLI flags, DPI scaling |
+| `pc/src/pc_gx.c` | GX → OpenGL: all GX API functions, vertex submission, state, draw dispatch, dirty-flag uniform system |
+| `pc/src/pc_gx_tev.c` | TEV shader: GLSL program loading, uniform upload |
+| `pc/src/pc_gx_texture.c` | 10 GC texture format decoders, 2048-entry cache with FNV-1a |
+| `pc/src/pc_os.c` | Dolphin OS: memory arena, timers, calendar time, message queues, thread stubs |
+| `pc/src/pc_mtx.c` | C matrix math replacing PPC paired-singles assembly |
+| `pc/src/pc_misc.c` | HW register arrays, EXI/SI/PPC stubs, malloc wrappers, trig |
 
 #### Asset Loading
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `pc/src/pc_disc.c` | 424 | GC disc image I/O (CISO/ISO/GCM), FST parsing, Yaz0 decompression |
-| `pc/src/pc_dvd.c` | 238 | DVD filesystem emulation: entry table, disc-backed and file-backed I/O |
-| `pc/src/pc_assets.c` | 30,657 | Auto-generated: ROM extraction, asset table, per-file loaders, byte-swap |
-| `pc/tools/gen_runtime_assets.py` | 632 | Source scanner: transforms .inc includes to runtime loads, generates pc_assets.c |
+| File | Purpose |
+|------|---------|
+| `pc/src/pc_disc.c` | GC disc image I/O (CISO/ISO/GCM), FST parsing, Yaz0 decompression |
+| `pc/src/pc_dvd.c` | DVD filesystem emulation: entry table, disc-backed and file-backed I/O |
+| `pc/src/pc_assets.c` | Auto-generated: ROM extraction, asset table, per-file loaders, byte-swap |
+| `pc/tools/gen_runtime_assets.py` | Source scanner: transforms .inc includes to runtime loads, generates pc_assets.c |
 
 #### I/O and Storage
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `pc/src/pc_card.c` | 306 | Memory card API → local file save/load |
-| `pc/src/pc_m_card.c` | 598 | Memory card manager: GCI save/load, village generation, ARAM data blocks |
-| `pc/src/pc_save_bswap.c` | 1,014 | GCI save file bidirectional LE↔BE byte-swap (Dolphin-compatible) |
-| `pc/src/pc_pad.c` | 173 | Keyboard + SDL2 gamepad input (GC button format) |
-| `pc/src/pc_audio.c` | 200 | SDL2 audio: 32kHz s16 stereo, dedicated producer thread + SPSC ring buffer |
-| `pc/src/pc_vi.c` | 120 | Video interface → SDL swap, timer-based 60fps pacing with spin-wait |
-| `pc/src/pc_aram.c` | 81 | 16MB ARAM buffer, bump allocator, DMA → memcpy |
+| File | Purpose |
+|------|---------|
+| `pc/src/pc_card.c` | Memory card API → local file save/load |
+| `pc/src/pc_m_card.c` | Memory card manager: GCI save/load, village generation, ARAM data blocks |
+| `pc/src/pc_save_bswap.c` | GCI save file bidirectional LE↔BE byte-swap (Dolphin-compatible) |
+| `pc/src/pc_pad.c` | Keyboard + SDL2 gamepad input (GC button format) |
+| `pc/src/pc_audio.c` | SDL2 audio: 32kHz s16 stereo, dedicated producer thread + SPSC ring buffer |
+| `pc/src/pc_vi.c` | Video interface → SDL swap, timer-based 60fps pacing with spin-wait |
+| `pc/src/pc_aram.c` | 16MB ARAM buffer, bump allocator, DMA → memcpy |
 
 #### Enhancements
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `pc/src/pc_settings.c` | 156 | Runtime `settings.ini` parser/writer (resolution up to 4K, fullscreen, vsync, MSAA) |
-| `pc/src/pc_texture_pack.c` | 1,239 | Dolphin-compatible HD texture pack loader (XXHash64 matching, DDS, preloading) |
-| `pc/src/pc_model_viewer.c` | 568 | Debug model viewer: 75 building/structure models, orbit camera |
+| File | Purpose |
+|------|---------|
+| `pc/src/pc_settings.c` | Runtime `settings.ini` parser/writer (resolution up to 4K, fullscreen, vsync, MSAA) |
+| `pc/src/pc_texture_pack.c` | Dolphin-compatible HD texture pack loader (XXHash64 matching, DDS, preloading) |
+| `pc/src/pc_model_viewer.c` | Debug model viewer: 75 building/structure models, orbit camera |
 
 #### Support
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `pc/src/pc_stubs.c` | 116 | Remaining link stubs (GBA, famicom, libultra, threads) |
-| `pc/src/pc_stubs_cpp.cpp` | 34 | JSystem C++ vtable stubs |
-| `pc/src/pc_fontdata.c` | 1,056 | Embedded font (byte-swapped for LE) |
-| `pc/shaders/default.vert` | 40 | GLSL vertex shader (runtime-loaded, required) |
-| `pc/shaders/default.frag` | 416 | GLSL fragment shader (runtime-loaded, uniform-driven TEV stages with bias/scale/clamp/swap) |
+| File | Purpose |
+|------|---------|
+| `pc/src/pc_stubs.c` | Remaining link stubs (GBA, famicom, libultra, threads) |
+| `pc/src/pc_stubs_cpp.cpp` | JSystem C++ vtable stubs |
+| `pc/src/pc_fontdata.c` | Embedded font (byte-swapped for LE) |
+| `pc/shaders/default.vert` | GLSL vertex shader (runtime-loaded, required) |
+| `pc/shaders/default.frag` | GLSL fragment shader (runtime-loaded, uniform-driven TEV stages with bias/scale/clamp/swap) |
 
 #### Headers
 
@@ -145,25 +147,25 @@ User provides disc image (.ciso/.iso/.gcm)
 
 These are the most-modified files from the upstream decompilation:
 
-| File | Changes | Why |
-|------|---------|-----|
-| `src/static/libforest/emu64/emu64.c` | ~850 lines | Texture cache routing, TEXEL1, vertex colors, crash protection, fog guard, per-stage texture binding, widescreen NOOPTag handling |
-| `include/libforest/gbi_extensions.h` | ~660 lines | 30 GBI bitfield structs reversed for LE x86 |
-| `src/static/libforest/emu64/emu64_utility.c` | ~50 lines | seg2k0 proximity heuristic, N64Mtx byte-swap |
-| `src/static/boot.c` | ~50 lines | Arena init, REL skip, actable endian swap |
-| `src/graph.c` | ~100 lines | Frame loop diagnostics, model viewer routing |
-| `src/padmgr.c` | ~75 lines | GC→N64 button conversion, once-per-frame guard |
-| `src/game/m_play.c` | ~65 lines | Scene transition diagnostics, fog BG fix, widescreen stretch markers |
-| `src/game/m_player_lib.c` | ~50 lines | Player palette byte-swap from ARAM |
-| `src/game/m_field_make.c` | ~40 lines | FG data u16 byte-swap (3 swap sites) |
-| `src/game/m_room_type.c` | ~24 lines | Room wall/floor palette u16 byte-swap |
-| `src/game/m_scene.c` | ~21 lines | Scene_Word_u endianness fix |
-| `src/sys_matrix.c` | ~70 lines | Matrix_MtxtoMtxF endian swap, suMtxMakeTS/SRT/SRT_ZXY fixes |
-| `src/game/m_npc.c` | ~8 lines | Title demo animal slot cleanup: clear before write, skip sentinel entries |
-| `src/game/m_trademark.c` | ~3 lines | Clear npclist before demo repopulation, sentinel entry for demo_npc_list |
-| `src/actor/npc/ac_npc_think_wander.c_inc` | ~4 lines | Clamp `looks` before indexing decide_boarder[] (latent OOB bug) |
-| `src/game.c` | ~6 lines | Crash diagnostic printf in setjmp recovery |
-| `src/jaudio_NES/na_combo.c` | ~4 lines | Melody sequence u16 offset byte-swap |
+| File | Why |
+|------|-----|
+| `src/static/libforest/emu64/emu64.c` | Texture cache routing, TEXEL1, vertex colors, crash protection, fog guard, per-stage texture binding, widescreen NOOPTag handling |
+| `include/libforest/gbi_extensions.h` | 30 GBI bitfield structs reversed for LE x86 |
+| `src/static/libforest/emu64/emu64_utility.c` | seg2k0 proximity heuristic, N64Mtx byte-swap |
+| `src/static/boot.c` | Arena init, REL skip, actable endian swap |
+| `src/graph.c` | Frame loop diagnostics, model viewer routing |
+| `src/padmgr.c` | GC→N64 button conversion, once-per-frame guard |
+| `src/game/m_play.c` | Scene transition diagnostics, fog BG fix, widescreen stretch markers |
+| `src/game/m_player_lib.c` | Player palette byte-swap from ARAM |
+| `src/game/m_field_make.c` | FG data u16 byte-swap (3 swap sites) |
+| `src/game/m_room_type.c` | Room wall/floor palette u16 byte-swap |
+| `src/game/m_scene.c` | Scene_Word_u endianness fix |
+| `src/sys_matrix.c` | Matrix_MtxtoMtxF endian swap, suMtxMakeTS/SRT/SRT_ZXY fixes |
+| `src/game/m_npc.c` | Title demo animal slot cleanup: clear before write, skip sentinel entries |
+| `src/game/m_trademark.c` | Clear npclist before demo repopulation, sentinel entry for demo_npc_list |
+| `src/actor/npc/ac_npc_think_wander.c_inc` | Clamp `looks` before indexing decide_boarder[] (latent OOB bug) |
+| `src/game.c` | Crash diagnostic printf in setjmp recovery |
+| `src/jaudio_NES/na_combo.c` | Melody sequence u16 offset byte-swap |
 
 About ~100 decomp files total are modified. Most changes are small `#ifdef TARGET_PC` blocks for byte-swapping or platform adaptation.
 
