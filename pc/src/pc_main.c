@@ -110,9 +110,15 @@ void pc_platform_init(void) {
         exit(1);
     }
 
+#ifdef PC_USE_GLES
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+#else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+#endif
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 #ifdef PC_ENHANCEMENTS
@@ -150,8 +156,13 @@ void pc_platform_init(void) {
         exit(1);
     }
 
+#ifdef PC_USE_GLES
+    if (!gladLoadGLES2((GLADloadfunc)SDL_GL_GetProcAddress)) {
+        fprintf(stderr, "gladLoadGLES2 failed\n");
+#else
     if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress)) {
         fprintf(stderr, "gladLoadGL failed\n");
+#endif
         SDL_GL_DeleteContext(g_pc_gl_context);
         SDL_DestroyWindow(g_pc_window);
         SDL_Quit();
@@ -160,11 +171,17 @@ void pc_platform_init(void) {
 
     SDL_GL_SetSwapInterval(g_pc_settings.vsync);
 
+    printf("[PC] GL Renderer: %s\n", glGetString(GL_RENDERER));
+    printf("[PC] GL Version:  %s\n", glGetString(GL_VERSION));
+    printf("[PC] GL Vendor:   %s\n", glGetString(GL_VENDOR));
+
     pc_platform_update_window_size();
 
 #ifdef PC_ENHANCEMENTS
     if (g_pc_settings.msaa > 0) {
-        glEnable(GL_MULTISAMPLE);
+#ifndef PC_USE_GLES
+        glEnable(GL_MULTISAMPLE);  /* GLES: MSAA enabled at framebuffer level via SDL */
+#endif
     }
 #endif
 

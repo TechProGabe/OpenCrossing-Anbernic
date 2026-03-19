@@ -279,7 +279,11 @@ void pc_gx_begin_frame(void) {
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, g_pc_window_w, g_pc_window_h);
 #endif
+#ifdef PC_USE_GLES
+    glClearDepthf(g_gx.clear_depth);
+#else
     glClearDepth(g_gx.clear_depth);
+#endif
     glClearColor(g_gx.clear_color[0], g_gx.clear_color[1], g_gx.clear_color[2], g_gx.clear_color[3]);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
@@ -1015,7 +1019,11 @@ void GXSetViewport(f32 left, f32 top, f32 wd, f32 ht, f32 nearz, f32 farz) {
     /* GX is Y-down, GL is Y-up */
     glViewport((int)left, PC_GC_HEIGHT - (int)top - (int)ht, (int)wd, (int)ht);
 #endif
+#ifdef PC_USE_GLES
+    glDepthRangef(nearz, farz);
+#else
     glDepthRange((double)nearz, (double)farz);
+#endif
 }
 
 void GXSetViewportJitter(f32 left, f32 top, f32 wd, f32 ht, f32 nearz, f32 farz, u32 field) {
@@ -1527,8 +1535,18 @@ void GXSetTexCoordGen2(u32 dst, u32 func, u32 src, u32 mtx, GXBool normalize, u3
         g_gx.tex_gen_mtx[dst] = mtx;
     }
 }
-void GXSetLineWidth(u8 width, u32 texOffsets) { glLineWidth(width / 16.0f); }
-void GXSetPointSize(u8 size, u32 texOffsets) { glPointSize(size / 16.0f); }
+void GXSetLineWidth(u8 width, u32 texOffsets) {
+#ifndef PC_USE_GLES
+    glLineWidth(width / 16.0f);
+#endif
+    (void)width; (void)texOffsets;
+}
+void GXSetPointSize(u8 size, u32 texOffsets) {
+#ifndef PC_USE_GLES
+    glPointSize(size / 16.0f);
+#endif
+    (void)size; (void)texOffsets;
+}
 void GXEnableTexOffsets(u32 coord, GXBool line, GXBool point) {
     (void)coord; (void)line; (void)point;
 }

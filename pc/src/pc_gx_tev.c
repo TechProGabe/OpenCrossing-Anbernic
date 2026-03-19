@@ -42,7 +42,23 @@ static GLuint default_program = 0;
 
 static GLuint compile_shader(GLenum type, const char* source) {
     GLuint shader = glCreateShader(type);
+#ifdef PC_USE_GLES
+    /* Replace "#version 330 core" with "#version 320 es" + precision qualifiers */
+    const char* version_line = "#version 320 es\n";
+    const char* precision_line = (type == GL_FRAGMENT_SHADER)
+        ? "precision mediump float;\nprecision mediump int;\n"
+        : "precision highp float;\nprecision highp int;\n";
+    const char* past_version = source;
+    if (strncmp(source, "#version", 8) == 0) {
+        past_version = strchr(source, '\n');
+        if (past_version) past_version++;
+        else past_version = source;
+    }
+    const char* sources[3] = { version_line, precision_line, past_version };
+    glShaderSource(shader, 3, sources, NULL);
+#else
     glShaderSource(shader, 1, &source, NULL);
+#endif
     glCompileShader(shader);
 
     GLint success;

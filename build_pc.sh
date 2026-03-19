@@ -24,9 +24,11 @@ set -e
 
 # --- Parse arguments ---
 ARCH="x86"
+USE_GLES=""
 for arg in "$@"; do
     case "$arg" in
         --armhf) ARCH="armhf" ;;
+        --gles)  USE_GLES="-DPC_USE_GLES=ON" ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
 done
@@ -78,7 +80,8 @@ elif [ "$ARCH" = "armhf" ]; then
     if [ ! -f Makefile ]; then
         echo "=== Configuring CMake (Linux ARMhf 32-bit) ==="
         cmake .. -G "Unix Makefiles" \
-            -DCMAKE_TOOLCHAIN_FILE="../cmake/Toolchain-arm-linux-gnueabihf.cmake"
+            -DCMAKE_TOOLCHAIN_FILE="../cmake/Toolchain-arm-linux-gnueabihf.cmake" \
+            $USE_GLES
     fi
     echo "=== Building ==="
     make -j$(nproc)
@@ -106,7 +109,8 @@ else
     if [ ! -f Makefile ]; then
         echo "=== Configuring CMake (Linux x86 32-bit) ==="
         cmake .. -G "Unix Makefiles" \
-            -DCMAKE_TOOLCHAIN_FILE="../cmake/Toolchain-linux32.cmake"
+            -DCMAKE_TOOLCHAIN_FILE="../cmake/Toolchain-linux32.cmake" \
+            $USE_GLES
     fi
     echo "=== Building ==="
     make -j$(nproc)
