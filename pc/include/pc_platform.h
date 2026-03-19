@@ -51,10 +51,16 @@
 #undef near
 #undef far
 #else
+/* Rename POSIX link() before including signal.h, which pulls in unistd.h.
+ * unistd.h declares "extern int link(const char*, const char*)" which conflicts
+ * with jaudio_NES audiostruct.h's "typedef struct link_ link".
+ * We don't call link() anywhere, so silently redirecting it is safe. */
+#define link _pc_posix_link_fn
 #include <signal.h>
 #include <sys/mman.h>
 #include <dlfcn.h>
 #include <elf.h>
+#undef link
 #endif
 #include <setjmp.h>
 

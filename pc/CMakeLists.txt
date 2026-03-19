@@ -40,6 +40,16 @@ add_compile_definitions(
     PC_ENHANCEMENTS  # Optional visual improvements (MSAA, etc). Remove to get pure PC port.
 )
 
+# _GNU_SOURCE: required only for pc_main.c (dladdr/Dl_info for image range detection).
+# Do NOT define globally — it causes glibc to expose fsqrt(double) which conflicts
+# with the game's f32 fsqrt(f32) declaration in libc64/math64.h.
+if(UNIX AND NOT APPLE)
+    set_source_files_properties(
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/pc_main.c"
+        PROPERTIES COMPILE_DEFINITIONS "_GNU_SOURCE"
+    )
+endif()
+
 # Common compiler flags (applied to all sources)
 if(MSVC)
     add_compile_options(/W0)
@@ -48,6 +58,14 @@ else()
         -fno-strict-aliasing
         -fwrapv
     )
+    # On 32-bit x86 Linux, GCC defaults to x87 FPU which uses 80-bit extended
+    # precision for ALL float ops. This causes angle interpolation to overshoot
+    # (characters spin endlessly) because intermediate results don't match the
+    # 32-bit precision the GameCube code expects. Force SSE2 math (proper 32/64-bit).
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "i[3-6]86" OR
+       (CMAKE_SIZEOF_VOID_P EQUAL 4 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86|X86"))
+        add_compile_options(-msse2 -mfpmath=sse)
+    endif()
 endif()
 
 # =============================================================================
@@ -110,13 +128,33 @@ if(NOT SDL2_FOUND)
                 endif()
             endif()
         endif()
+    else()
+        # Linux manual fallback: search 32-bit multiarch paths directly.
+        # Needed when pkg-config returns the host (64-bit) SDL2 instead of the
+        # 32-bit one, or when pkg-config is not installed.
+        find_library(SDL2_MANUAL_LIB
+            NAMES SDL2
+            PATHS
+                /usr/lib/i386-linux-gnu    # Debian/Ubuntu multiarch i386
+                /usr/lib32                  # Fedora/Arch lib32
+                /usr/lib/arm-linux-gnueabihf  # Debian/Ubuntu multiarch armhf
+            NO_DEFAULT_PATH
+        )
+        if(SDL2_MANUAL_LIB)
+            set(SDL2_FOUND TRUE)
+            set(SDL2_LIBRARIES "${SDL2_MANUAL_LIB}")
+            # Headers are architecture-independent; SDL2 always installs to /usr/include/SDL2
+            set(SDL2_INCLUDE_DIRS "/usr/include/SDL2")
+        endif()
+        unset(SDL2_MANUAL_LIB CACHE)
     endif()
 
     if(NOT SDL2_FOUND)
         message(FATAL_ERROR
             "SDL2 not found!\n"
-            "  Linux:         sudo apt install libsdl2-dev:i386  (Debian/Ubuntu)\n"
+            "  Linux (x86):   sudo apt install libsdl2-dev:i386  (Debian/Ubuntu)\n"
             "                 sudo dnf install SDL2-devel.i686   (Fedora)\n"
+            "  Linux (armhf): sudo apt install libsdl2-dev:armhf (Debian/Ubuntu)\n"
             "  Windows/MSYS2: pacman -S mingw-w64-i686-SDL2\n"
             "  Or download SDL2 development libraries to ${CMAKE_CURRENT_SOURCE_DIR}/lib/SDL2")
     endif()
@@ -369,6 +407,12 @@ if(WIN32)
 else()
     find_package(OpenGL REQUIRED)
     target_link_libraries(ac_pc OpenGL::GL dl pthread m)
+    # Hide game's operator new/delete from shared libraries. On Linux, ELF symbol
+    # interposition causes SDL/Mesa/ALSA threads to use JKRHeap's allocator which
+    # isn't thread-safe and crashes. This version script keeps them binary-local.
+    target_link_options(ac_pc PRIVATE
+        "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/version_script.lds"
+    )
 endif()
 
 set_target_properties(ac_pc PROPERTIES

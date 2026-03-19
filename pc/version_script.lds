@@ -1,0 +1,14 @@
+{
+    global:
+        main;
+        _IO_stdin_used;
+    local:
+        _Znwj;
+        _Znwji;
+        _Znaj;
+        _Znaji;
+        _ZdlPv;
+        _ZdlPvj;
+        _ZdaPv;
+        _ZdaPvj;
+};

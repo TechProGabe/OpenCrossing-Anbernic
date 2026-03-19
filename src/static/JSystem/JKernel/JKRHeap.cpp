@@ -296,6 +296,77 @@ bool JKRHeap::isSubHeap(JKRHeap* heap) const {
     return false;
 }
 
+#ifdef TARGET_PC
+/* On PC, system libraries (Mesa/LLVM/SDL2) run on background threads that
+ * call operator new/delete. On Linux, the game's operator new/delete symbols
+ * leak into shared libraries via ELF symbol interposition. Two problems:
+ *   1. Before JKRHeap init: sCurrentHeap is NULL → alloc returns NULL → crash
+ *   2. After JKRHeap init: SDL threads call JKRHeap which isn't thread-safe → crash
+ *
+ * Fix: hide these symbols from shared libraries (visibility("hidden")) so only
+ * the game binary's own code uses them. Shared libraries keep using libstdc++'s
+ * operator new/delete backed by glibc malloc. On Windows, DLLs have separate
+ * CRT allocators so this isn't an issue.
+ *
+ * The game's own new/delete still needs the malloc fallback for allocations
+ * that happen before JKRHeap::createRoot (e.g., C++ global constructors). */
+#include <cstdlib>
+
+#ifdef __GNUC__
+#define HIDDEN __attribute__((visibility("hidden")))
+#else
+#define HIDDEN
+#endif
+
+HIDDEN void* operator new(u32 byteCount) {
+    if (!JKRHeap::sCurrentHeap) return std::malloc(byteCount);
+    return JKRHeap::alloc(byteCount, 4, nullptr);
+}
+HIDDEN void* operator new(u32 byteCount, int alignment) {
+    if (!JKRHeap::sCurrentHeap) return std::malloc(byteCount);
+    return JKRHeap::alloc(byteCount, alignment, nullptr);
+}
+HIDDEN void* operator new(u32 byteCount, JKRHeap* heap, int alignment) {
+    return JKRHeap::alloc(byteCount, alignment, heap);
+}
+
+HIDDEN void* operator new[](u32 byteCount) {
+    if (!JKRHeap::sCurrentHeap) return std::malloc(byteCount);
+    return JKRHeap::alloc(byteCount, 4, nullptr);
+}
+HIDDEN void* operator new[](u32 byteCount, int alignment) {
+    if (!JKRHeap::sCurrentHeap) return std::malloc(byteCount);
+    return JKRHeap::alloc(byteCount, alignment, nullptr);
+}
+HIDDEN void* operator new[](u32 byteCount, JKRHeap* heap, int alignment) {
+    return JKRHeap::alloc(byteCount, alignment, heap);
+}
+
+HIDDEN void operator delete(void* memory) {
+    if (!JKRHeap::sRootHeap || !JKRHeap::findFromRoot(memory))
+        { std::free(memory); return; }
+    JKRHeap::free(memory, nullptr);
+}
+HIDDEN void operator delete[](void* memory) {
+    if (!JKRHeap::sRootHeap || !JKRHeap::findFromRoot(memory))
+        { std::free(memory); return; }
+    JKRHeap::free(memory, nullptr);
+}
+HIDDEN void operator delete(void* memory, size_t) {
+    if (!JKRHeap::sRootHeap || !JKRHeap::findFromRoot(memory))
+        { std::free(memory); return; }
+    JKRHeap::free(memory, nullptr);
+}
+HIDDEN void operator delete[](void* memory, size_t) {
+    if (!JKRHeap::sRootHeap || !JKRHeap::findFromRoot(memory))
+        { std::free(memory); return; }
+    JKRHeap::free(memory, nullptr);
+}
+
+#undef HIDDEN
+
+#else
+/* GameCube: no system libraries, JKRHeap is always available */
 void* operator new(u32 byteCount) {
     return JKRHeap::alloc(byteCount, 4, nullptr);
 }
@@ -321,16 +392,6 @@ void operator delete(void* memory) {
     JKRHeap::free(memory, nullptr);
 }
 void operator delete[](void* memory) {
-    JKRHeap::free(memory, nullptr);
-}
-#ifdef TARGET_PC
-/* C++14 sized deallocation - GCC 15 generates calls to these by default.
-   Without these, sized delete falls through to CRT free() which crashes
-   on pointers from the JKR heap (inside the game's arena memory). */
-void operator delete(void* memory, size_t) {
-    JKRHeap::free(memory, nullptr);
-}
-void operator delete[](void* memory, size_t) {
     JKRHeap::free(memory, nullptr);
 }
 #endif

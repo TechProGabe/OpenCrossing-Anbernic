@@ -142,7 +142,6 @@ void pc_platform_init(void) {
         SDL_Quit();
         exit(1);
     }
-
     g_pc_gl_context = SDL_GL_CreateContext(g_pc_window);
     if (!g_pc_gl_context) {
         fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());

@@ -24,12 +24,15 @@ f32 fatan2(f32, f32);
 f32 fsqrt(f32);
 f32 facos(f32);
 #else
-/* PC stubs - these will be implemented in pc_mtx.c */
+/* On Linux/PC, fsqrt/fatan2/facos conflict with GCC built-ins in C++ mode.
+ * Replace with macros pointing to C standard equivalents. The function
+ * definitions in math64.c are guarded with #ifndef TARGET_PC accordingly. */
+#include <math.h>
 s16 sins(u16);
 s16 coss(u16);
-f32 fatan2(f32, f32);
-f32 fsqrt(f32);
-f32 facos(f32);
+#define fatan2(x, y) atan2f((f32)(x), (f32)(y))
+#define fsqrt(x)     sqrtf(x)
+#define facos(x)     acosf(x)
 #endif
 
 #ifdef __cplusplus

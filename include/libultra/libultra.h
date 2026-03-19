@@ -22,9 +22,14 @@ extern "C" {
 
 typedef u64 Z_OSTime;
 
+#ifndef TARGET_PC
+/* On PC, bcmp/bcopy/bzero are standard POSIX/C functions already declared by
+ * system headers (strings.h, string.h). Re-declaring them here with different
+ * argument types causes "conflicting types" errors on Linux. */
 int bcmp(void* v1, void* v2, u32 size);
 void bcopy(void* src, void* dst, size_t n);
 void bzero(void* ptr, size_t size);
+#endif
 void osSyncPrintf(const char* fmt, ...);
 void osWritebackDCache(void* vaddr, u32 nbytes);
 u32 osGetCount(void);
