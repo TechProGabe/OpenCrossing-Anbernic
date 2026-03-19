@@ -1,4 +1,4 @@
-# Animal Crossing PC Port
+# Animal Crossing PC Port FORK FOR LINUX
 
 A native PC port of Animal Crossing (GameCube) built on top of the [ac-decomp](https://github.com/ACreTeam/ac-decomp) decompilation project.
 
@@ -10,54 +10,20 @@ Supported versions: GAFE01_00: Rev 0 (USA)
 
 ## Quick Start (Pre-built Release)
 
-Pre-built releases are available on the [Releases](https://github.com/flyngmt/ACGC-PC-Port/releases) page. No build tools required.
+Pre-built releases are available on the Releases page. No build tools required.
 
 1. Download and extract the latest release zip
 2. Place your disc image in the `rom/` folder
-3. Run `AnimalCrossing.exe`
+3. Run `AnimalCrossing`
 
 The game reads all assets directly from the disc image at startup. No extraction or preprocessing step is needed.
 
 ## Building from Source
 
-Only needed if you want to modify the code. Otherwise, use the [pre-built release](https://github.com/flyngmt/ACGC-PC-Port/releases) above.
+Only needed if you want to modify the code. Otherwise, use the releases above.
 
 ### Requirements
-
-- **MSYS2** (https://www.msys2.org/)
-- **Animal Crossing (USA) disc image** (ISO, GCM, or CISO format)
-
-### MSYS2 Packages
-
-Open **MSYS2 MINGW32** from your Start menu and install:
-
-```bash
-pacman -S mingw-w64-i686-gcc mingw-w64-i686-cmake mingw-w64-i686-SDL2 mingw-w64-i686-make
-```
-
-### Build Steps
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/flyngmt/ACGC-PC-Port.git
-   cd ACGC-PC-Port
-   ```
-
-2. Build (from **MSYS2 MINGW32** shell):
-   ```bash
-   ./build_pc.sh
-   ```
-
-3. Place your disc image in the `rom/` folder:
-   ```
-   pc/build32/bin/rom/YourGame.ciso
-   ```
-
-4. Run:
-   ```bash
-   pc/build32/bin/AnimalCrossing.exe
-   ```
-
+Just run the build_pc.sh , it will tell you the missing stuff but you just need to compile for x86 and also make sure you got SDL2 libs
 ## Controls
 
 Keyboard bindings are customizable via `keybindings.ini` (next to the executable). Mouse buttons (Mouse1/Mouse2/Mouse3) can also be assigned.

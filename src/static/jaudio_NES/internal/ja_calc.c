@@ -1,9 +1,18 @@
 #include "jaudio_NES/ja_calc.h"
 
+#ifdef TARGET_PC
+#include <math.h>
+#ifndef HALF_PI
+#define HALF_PI 1.5707964f
+#endif
+/* Metrowerks puts these in std:: — on PC use unqualified C math functions */
+namespace std {
+    using ::sqrtf;
+    using ::sinf;
+}
+#else
 #include "PowerPC_EABI_Support/msl/MSL_C/PPC_EABI/cmath_gcn.h"
-// #include "std/Math.h"
-// #include "dolphin/math.h"
-// #include "stl/math.h"
+#endif
 
 #define SINTABLE_LENGTH (257)
 static f32 SINTABLE[SINTABLE_LENGTH];

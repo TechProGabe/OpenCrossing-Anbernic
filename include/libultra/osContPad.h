@@ -50,7 +50,10 @@ extern "C" {
 #define CONT_ERR_VOICE_NO_RESPONSE 15
 
 #ifdef TARGET_PC
-/* 'errno' is a macro on PC (from <errno.h>), rename the struct member */
+/* 'errno' is a macro on Linux/PC (<errno.h> via SDL2 → strings.h include chain).
+ * Undefine it so the struct field named 'errno' compiles as a plain identifier.
+ * Do NOT restore it — game code only uses errno as a struct field, never as the
+ * C standard error variable, so leaving it undefined is safe. */
 #ifdef errno
 #undef errno
 #endif
@@ -66,8 +69,6 @@ typedef struct {
     /* 0x03 */ s8 stick_y;
     /* 0x04 */ u8 errno;
 } OSContPad;
-/* Restore errno macro */
-#include <errno.h>
 #else
 
 typedef struct {
