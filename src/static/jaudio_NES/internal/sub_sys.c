@@ -701,8 +701,20 @@ extern s32 CreateAudioTask(Acmd* cmds, s16* pSamples, u32 nSamples, s32 param_4)
             Z_osSendMesg(AG.spec_change_mq_p, (OSMesg)AG.spec_id, OS_MESG_NOBLOCK);
         }
 
+#ifdef TARGET_PC
+        /* Drain command queue during spec change to prevent overflow.
+         * Game keeps sending commands while audio is resetting — discard them. */
+        {
+            u32 discard;
+            while (Z_osRecvMesg(AG.thread_cmd_proc_mq_p, (OSMesg*)&discard, OS_MESG_NOBLOCK) != -1) {}
+        }
+#endif
+
         return 0;
     } else if (AG.reset_timer > 16) {
+#ifdef TARGET_PC
+        { u32 discard; while (Z_osRecvMesg(AG.thread_cmd_proc_mq_p, (OSMesg*)&discard, OS_MESG_NOBLOCK) != -1) {} }
+#endif
         return 0;
     } else {
         s32 port_cmds;
