@@ -5,8 +5,7 @@
  * Address:	8021E698
  * Size:	000008
  */
-DSError TRKInitializeMutex(void*)
-{
+DSError TRKInitializeMutex(void* _p0) {
 	return DS_NoError;
 }
 
@@ -15,8 +14,7 @@ DSError TRKInitializeMutex(void*)
  * Address:	8021E6A0
  * Size:	000008
  */
-DSError TRKAcquireMutex(void*)
-{
+DSError TRKAcquireMutex(void* _p0) {
 	return DS_NoError;
 }
 
@@ -25,7 +23,6 @@ DSError TRKAcquireMutex(void*)
  * Address:	8021E6A8
  * Size:	000008
  */
-DSError TRKReleaseMutex(void*)
-{
+DSError TRKReleaseMutex(void* _p0) {
 	return DS_NoError;
 }

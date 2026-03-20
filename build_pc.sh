@@ -87,31 +87,48 @@ elif [ "$ARCH" = "armhf" ]; then
     make -j$(nproc)
 
 else
-    # --- Linux x86 32-bit ---
+    # --- Linux native 32-bit ---
+    # Detect arch from the compiler target (uname -m reports host kernel in chroots)
+    GCC_TARGET="$(gcc -dumpmachine 2>/dev/null || echo unknown)"
+    HOST_ARCH="$(uname -m)"
 
-    # Help pkg-config find 32-bit libraries on multiarch x86_64 hosts.
-    # libsdl2-dev:i386 installs to /usr/lib/i386-linux-gnu/pkgconfig on Debian/Ubuntu.
-    # SDL2-devel.i686  installs to /usr/lib/pkgconfig or /usr/lib32/pkgconfig on Fedora.
-    for dir in \
-        /usr/lib/i386-linux-gnu/pkgconfig \
-        /usr/lib32/pkgconfig \
-        /usr/lib/pkgconfig; do
-        if [ -d "$dir" ]; then
-            export PKG_CONFIG_PATH="$dir:${PKG_CONFIG_PATH:-}"
+    if echo "$GCC_TARGET" | grep -q "arm"; then
+        # Native ARM 32-bit (chroot, RPi, etc.) — no toolchain needed
+        if [ ! -f Makefile ]; then
+            echo "=== Configuring CMake (Linux ARM 32-bit native) ==="
+            cmake .. -G "Unix Makefiles" $USE_GLES
         fi
-    done
 
-    # Use i686-linux-gnu-pkg-config if available (avoids mixing 64-bit flags on 64-bit host)
-    if command -v i686-linux-gnu-pkg-config &>/dev/null; then
-        export PKG_CONFIG=i686-linux-gnu-pkg-config
+    elif [ "$HOST_ARCH" = "x86_64" ] || [ "$HOST_ARCH" = "i686" ]; then
+        # x86: need 32-bit toolchain on x86_64 hosts
+        for dir in \
+            /usr/lib/i386-linux-gnu/pkgconfig \
+            /usr/lib32/pkgconfig \
+            /usr/lib/pkgconfig; do
+            if [ -d "$dir" ]; then
+                export PKG_CONFIG_PATH="$dir:${PKG_CONFIG_PATH:-}"
+            fi
+        done
+
+        if command -v i686-linux-gnu-pkg-config &>/dev/null; then
+            export PKG_CONFIG=i686-linux-gnu-pkg-config
+        fi
+
+        if [ ! -f Makefile ]; then
+            echo "=== Configuring CMake (Linux x86 32-bit) ==="
+            cmake .. -G "Unix Makefiles" \
+                -DCMAKE_TOOLCHAIN_FILE="../cmake/Toolchain-linux32.cmake" \
+                $USE_GLES
+        fi
+
+    else
+        # Other 32-bit arch — try native
+        if [ ! -f Makefile ]; then
+            echo "=== Configuring CMake (Linux $(uname -m) native) ==="
+            cmake .. -G "Unix Makefiles" $USE_GLES
+        fi
     fi
 
-    if [ ! -f Makefile ]; then
-        echo "=== Configuring CMake (Linux x86 32-bit) ==="
-        cmake .. -G "Unix Makefiles" \
-            -DCMAKE_TOOLCHAIN_FILE="../cmake/Toolchain-linux32.cmake" \
-            $USE_GLES
-    fi
     echo "=== Building ==="
     make -j$(nproc)
 fi

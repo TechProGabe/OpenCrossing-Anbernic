@@ -67,7 +67,7 @@ static void aWeatherSakura_make(ACTOR* actor, GAME* game) {
     }
 }
 
-static void aWeatherSakura_ct(aWeather_Priv* priv, GAME*) {
+static void aWeatherSakura_ct(aWeather_Priv* priv, GAME* _game) {
     priv->work[0] = RANDOM_F(65535.0f);
     priv->work[1] = RANDOM_F(65535.0f);
     priv->work[2] = RANDOM_F(65535.0f);

@@ -93,7 +93,7 @@ static void aWeatherRain_make(ACTOR* actor, GAME* game) {
     }
 }
 
-static void aWeatherRain_ct(aWeather_Priv*, GAME*) {
+static void aWeatherRain_ct(aWeather_Priv* _p0, GAME* _p1) {
 }
 
 static void aWeatherRain_MoveRain(aWeather_Priv* priv) {

@@ -1840,7 +1840,7 @@ void Sou_InitAudio() {
     Na_StaffRollInit();
 }
 
-void Sou_DVD_Error(char*, u8*) {
+void Sou_DVD_Error(char* _p0, u8* _p1) {
     fatalErrorCallback();
 }
 

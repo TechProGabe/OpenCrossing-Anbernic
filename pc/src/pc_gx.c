@@ -43,6 +43,7 @@ static struct {
     GLuint gl_tex;
 } s_efb_captures[MAX_EFB_CAPTURES];
 static int s_efb_capture_count = 0;
+static GLuint s_efb_copy_fbo = 0; /* persistent FBO for GPU-side EFB copy */
 
 void pc_gx_efb_capture_store(u32 dest_ptr, GLuint gl_tex) {
     for (int i = 0; i < s_efb_capture_count; i++) {
@@ -293,6 +294,7 @@ void pc_gx_shutdown(void) {
     pc_gx_texture_shutdown();
 #ifdef PC_ENHANCEMENTS
     pc_gx_efb_capture_cleanup();
+    if (s_efb_copy_fbo) { glDeleteFramebuffers(1, &s_efb_copy_fbo); s_efb_copy_fbo = 0; }
 #endif
 
     if (g_gx.ebo) glDeleteBuffers(1, &g_gx.ebo);
@@ -1629,74 +1631,85 @@ static void pc_gx_copy_tex_execute(void* dest, GXBool clear) {
     int gl_y = g_pc_window_h - (read_top + read_ht);
     if (gl_y < 0) return;
 
-    size_t rgba_size = (size_t)read_wd * (size_t)read_ht * 4;
-    u8* rgba = (u8*)malloc(rgba_size);
-    if (!rgba) return;
-
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(read_left, gl_y, read_wd, read_ht, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-
 #ifdef PC_ENHANCEMENTS
-    /* Store as full-res GL texture; GXLoadTexObj will substitute it for the RGB565 buffer */
+    /* GPU-side EFB copy: blit framebuffer region into a texture via FBO.
+     * Avoids the glReadPixels GPU→CPU→GPU round-trip which stalls the pipeline
+     * and is extremely expensive on mobile/embedded GPUs (Mali, Adreno, etc.). */
     {
-        /* Flip: glReadPixels is bottom-up, textures are top-down */
-        int row_bytes = read_wd * 4;
-        for (int y = 0; y < read_ht / 2; y++) {
-            u8* top_row = &rgba[y * row_bytes];
-            u8* bot_row = &rgba[(read_ht - 1 - y) * row_bytes];
-            for (int b = 0; b < row_bytes; b++) {
-                u8 tmp = top_row[b];
-                top_row[b] = bot_row[b];
-                bot_row[b] = tmp;
-            }
-        }
-
         GLuint efb_tex;
         glGenTextures(1, &efb_tex);
         glBindTexture(GL_TEXTURE_2D, efb_tex);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, read_wd, read_ht, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+                     GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        /* Create persistent FBO on first use */
+        if (!s_efb_copy_fbo)
+            glGenFramebuffers(1, &s_efb_copy_fbo);
+
+        /* Attach destination texture to FBO, blit with Y-flip */
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_efb_copy_fbo);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, efb_tex, 0);
+
+        /* Source: default framebuffer region (bottom-up GL coords).
+         * Dest: texture via FBO, with Y flipped (src bottom→dst top) so the
+         * texture ends up in top-down order matching GC convention. */
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        glBlitFramebuffer(
+            read_left, gl_y, read_left + read_wd, gl_y + read_ht,  /* src: GL bottom-up */
+            0, read_ht, read_wd, 0,                                 /* dst: flipped Y */
+            GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
         pc_gx_efb_capture_store((u32)(uintptr_t)dest, efb_tex);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 #else
-    if (g_gx.tex_copy_fmt == 0x4) {
-        u8* out = (u8*)dest;
-        int bw = (out_wd + 3) / 4;
-        int bh = (out_ht + 3) / 4;
+    {
+        size_t rgba_size = (size_t)read_wd * (size_t)read_ht * 4;
+        u8* rgba = (u8*)malloc(rgba_size);
+        if (!rgba) return;
 
-        for (int by = 0; by < bh; by++) {
-            for (int bx = 0; bx < bw; bx++) {
-                for (int y = 0; y < 4; y++) {
-                    for (int x = 0; x < 4; x++) {
-                        int px = bx * 4 + x;
-                        int py = by * 4 + y;
-                        u16 rgb565 = 0;
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(read_left, gl_y, read_wd, read_ht, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
 
-                        if (px < out_wd && py < out_ht) {
-                            int src_x = px * read_wd / out_wd;
-                            int src_y = py * read_ht / out_ht;
-                            src_y = read_ht - 1 - src_y;
-                            const u8* p = &rgba[(src_y * read_wd + src_x) * 4];
-                            rgb565 = (u16)(((p[0] >> 3) << 11) | ((p[1] >> 2) << 5) | (p[2] >> 3));
+        if (g_gx.tex_copy_fmt == 0x4) {
+            u8* out = (u8*)dest;
+            int bw = (out_wd + 3) / 4;
+            int bh = (out_ht + 3) / 4;
+
+            for (int by = 0; by < bh; by++) {
+                for (int bx = 0; bx < bw; bx++) {
+                    for (int y = 0; y < 4; y++) {
+                        for (int x = 0; x < 4; x++) {
+                            int px = bx * 4 + x;
+                            int py = by * 4 + y;
+                            u16 rgb565 = 0;
+
+                            if (px < out_wd && py < out_ht) {
+                                int src_x = px * read_wd / out_wd;
+                                int src_y = py * read_ht / out_ht;
+                                src_y = read_ht - 1 - src_y;
+                                const u8* p = &rgba[(src_y * read_wd + src_x) * 4];
+                                rgb565 = (u16)(((p[0] >> 3) << 11) | ((p[1] >> 2) << 5) | (p[2] >> 3));
+                            }
+
+                            out[0] = (u8)((rgb565 >> 8) & 0xFF);
+                            out[1] = (u8)(rgb565 & 0xFF);
+                            out += 2;
                         }
-
-                        out[0] = (u8)((rgb565 >> 8) & 0xFF);
-                        out[1] = (u8)(rgb565 & 0xFF);
-                        out += 2;
                     }
                 }
             }
         }
+        free(rgba);
     }
 #endif
-
-    free(rgba);
     (void)clear;
 }
 

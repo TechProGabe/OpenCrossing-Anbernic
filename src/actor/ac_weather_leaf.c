@@ -74,7 +74,7 @@ static void aWeatherLeaf_make(ACTOR* actor, GAME* game) {
     }
 }
 
-static void aWeatherLeaf_ct(aWeather_Priv* priv, GAME*) {
+static void aWeatherLeaf_ct(aWeather_Priv* priv, GAME* _game) {
     priv->work[0] = RANDOM_F(3.0f);
     priv->work[1] = RANDOM_F(65535.0f);
     priv->work[2] = RANDOM_F(65535.0f);

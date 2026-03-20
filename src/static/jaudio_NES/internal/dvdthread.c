@@ -532,7 +532,7 @@ extern s32 DVDT_LoadtoARAM(u32 owner, char* name, u32 dst, u32 src, u32 length, 
 
 static vu32 buffer_full2;
 
-static void ARAM_DMAfinish2(u32) {
+static void ARAM_DMAfinish2(u32 _p0) {
     buffer_full2 -= 1;
 }
 

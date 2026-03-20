@@ -1,13 +1,25 @@
 cmake_minimum_required(VERSION 3.16)
 project(ac_pc C CXX)
 
-set(CMAKE_C_STANDARD 11)
+# C standard is set per-source via COMPILE_OPTIONS (not CMAKE_C_STANDARD)
+# because CMake appends the standard flag AFTER compile options, preventing
+# decomp sources from overriding to gnu89. See "Per-source warning settings".
 set(CMAKE_CXX_STANDARD 17)
 
-# Do NOT set a default build type. Any optimization level (-O1, -O2) exposes
-# undefined behavior in decomp code causing crashes. An empty build type gives
-# GCC's default (-O0) which works correctly. The NDEBUG define below ensures
-# asserts stay disabled regardless of build type.
+# Decomp code relies on undefined behavior that GCC may exploit at -O1+.
+# We use -O2 for performance but add flags to prevent UB-based miscompilation:
+#   -fno-strict-aliasing  (already global) — type-punning through pointer casts
+#   -fwrapv               (already global) — signed integer overflow wraps
+#   -fno-delete-null-pointer-checks        — keep null checks after UB deref
+#   -fno-lifetime-dse                      — don't optimize dead stores to dying objects
+#   -fno-aggressive-loop-optimizations     — don't assume no UB in loop bounds
+#   -fno-strict-overflow                   — pointer arithmetic overflow is defined
+# If crashes occur, first try -O1, then -Og, then remove these lines for -O0.
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
+endif()
+set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG -fno-delete-null-pointer-checks -fno-lifetime-dse -fno-aggressive-loop-optimizations -fno-strict-overflow")
 
 # Options
 option(PC_CONSOLE "Show console window (disables -mwindows, useful for debugging)" OFF)
@@ -343,31 +355,49 @@ set_source_files_properties(
 # Exclude emu64_utility.c (it's #included from emu64.c, not a standalone file)
 list(FILTER GAME_C_SOURCES EXCLUDE REGEX ".*/emu64_utility\\.c$")
 
-# These .c files contain C++ code (classes, namespaces, ::) - compile as C++
-# Only files that truly need C++ (std::, extern "C", etc.) - NOT just for nullptr
-set_source_files_properties(
-    "${DECOMP_ROOT}/src/static/libforest/emu64/emu64.c"
-    # ja_calc.c uses std::sinf, std::sqrtf
-    "${DECOMP_ROOT}/src/static/jaudio_NES/internal/ja_calc.c"
-    # sample.c: reinterpret_cast replaced with C cast under TARGET_PC, no longer needs C++
-    # jammain_2.c uses extern "C"
-    "${DECOMP_ROOT}/src/static/jaudio_NES/internal/jammain_2.c"
-    # game64.c includes .c_inc with extern "C" (OSAttention.c_inc)
-    "${DECOMP_ROOT}/src/static/jaudio_NES/game/game64.c"
-    PROPERTIES LANGUAGE CXX
-)
-
 # jaudio_NES C files use nullptr: define it as NULL for C compilation on PC.
 # Generator expression ensures this only applies to C files (C++ has nullptr natively).
 add_compile_options($<$<COMPILE_LANGUAGE:C>:-Dnullptr=NULL>)
 
 # =============================================================================
-# Per-source warning settings
+# Per-source warning settings & GCC compatibility
 # =============================================================================
-# Decomp code: suppress all warnings (fires heavily on decompiled code)
-set(DECOMP_WARN_FLAGS "-w;-fpermissive")
-set_source_files_properties(${GAME_C_SOURCES} ${GAME_CXX_SOURCES}
-    PROPERTIES COMPILE_OPTIONS "${DECOMP_WARN_FLAGS}"
+# Decomp code uses K&R-style empty parameter lists: void f() {} with prototype
+# void f(int, int). In C99/C11 () means "no args" → type conflict. In gnu89
+# () means "unspecified args" → compatible. Use gnu89 for all decomp C sources.
+# -fpermissive: on GCC 12+ also downgrades unnamed-param errors to warnings;
+# on GCC <12 it's silently ignored for C (unnamed params fixed in source).
+set(DECOMP_C_WARN_FLAGS "-w;-std=gnu89;-fpermissive")
+set(DECOMP_CXX_WARN_FLAGS "-w;-fpermissive")
+set_source_files_properties(${GAME_C_SOURCES}
+    PROPERTIES COMPILE_OPTIONS "${DECOMP_C_WARN_FLAGS}"
+)
+
+# These .c files contain C++ code (classes, namespaces, ::) — compile as C++.
+# Must override COMPILE_OPTIONS to use CXX flags (no -std=gnu89).
+set_source_files_properties(
+    "${DECOMP_ROOT}/src/static/libforest/emu64/emu64.c"
+    "${DECOMP_ROOT}/src/static/jaudio_NES/internal/ja_calc.c"
+    "${DECOMP_ROOT}/src/static/jaudio_NES/internal/jammain_2.c"
+    "${DECOMP_ROOT}/src/static/jaudio_NES/game/game64.c"
+    PROPERTIES LANGUAGE CXX COMPILE_OPTIONS "${DECOMP_CXX_WARN_FLAGS}"
+)
+
+# jaudio_NES and libforest decomp files contain PC-port additions using C99/C11
+# features (for-loop declarations, declarations after labels). Override all of them
+# to gnu11. Files already set to LANGUAGE CXX above are unaffected (CXX wins).
+set(DECOMP_C11_WARN_FLAGS "-w;-std=gnu11;-fpermissive")
+file(GLOB _JAUDIO_C_FILES
+    "${DECOMP_ROOT}/src/static/jaudio_NES/game/*.c"
+    "${DECOMP_ROOT}/src/static/jaudio_NES/internal/*.c"
+    "${DECOMP_ROOT}/src/static/libforest/emu64/*.c"
+)
+set_source_files_properties(${_JAUDIO_C_FILES}
+    PROPERTIES COMPILE_OPTIONS "${DECOMP_C11_WARN_FLAGS}"
+)
+
+set_source_files_properties(${GAME_CXX_SOURCES}
+    PROPERTIES COMPILE_OPTIONS "${DECOMP_CXX_WARN_FLAGS}"
 )
 
 # PC port code: enable warnings to catch bugs in code we control
@@ -379,7 +409,7 @@ list(FILTER PC_CXX_SOURCES INCLUDE REGEX "\\.cpp$")
 # warnings from decomp headers (types.h, gfxprint.h, OSRtc.h, libultra.h) that we can't modify.
 set(PC_WARN_SUPPRESS "-Wno-unused-parameter;-Wno-sign-compare;-Wno-comment;-Wno-unused-function;-Wno-builtin-declaration-mismatch")
 set_source_files_properties(${PC_C_SOURCES}
-    PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;${PC_WARN_SUPPRESS}"
+    PROPERTIES COMPILE_OPTIONS "-std=gnu11;-Wall;-Wextra;${PC_WARN_SUPPRESS}"
 )
 set_source_files_properties(${PC_CXX_SOURCES}
     PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;${PC_WARN_SUPPRESS};-fpermissive"
@@ -431,6 +461,11 @@ if(NOT WIN32)
         "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/version_script.lds"
     )
 endif()
+
+# Decomp headers define functions as bare `inline` (not `static inline`). In gnu89
+# mode each TU may emit an out-of-line copy → multiple definition errors on older ld.
+# GCC 13/x86 ld is lenient; GCC 10/ARM ld is strict. Allow duplicates like x86 does.
+target_link_options(ac_pc PRIVATE "LINKER:--allow-multiple-definition")
 
 set_target_properties(ac_pc PROPERTIES
     OUTPUT_NAME "AnimalCrossing"

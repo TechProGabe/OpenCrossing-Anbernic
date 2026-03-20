@@ -68,7 +68,7 @@ static void aWeatherSnow_make(ACTOR* actor, GAME* game) {
     }
 }
 
-static void aWeatherSnow_ct(aWeather_Priv*, GAME*) {
+static void aWeatherSnow_ct(aWeather_Priv* _p0, GAME* _p1) {
 }
 
 static int aWeatherSnow_CheckSnowBorder(aWeather_Priv* priv, GAME_PLAY* play) {
