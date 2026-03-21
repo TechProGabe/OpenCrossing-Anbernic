@@ -54,7 +54,9 @@ static LONG WINAPI pc_veh_handler(PEXCEPTION_POINTERS ep) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 #else
-/* POSIX equivalent of VEH — longjmp from signal handler (POSIX-defined for program faults) */
+/* POSIX equivalent of VEH — longjmp from signal handler.
+ * Must unblock the signal before longjmp, otherwise it stays masked
+ * and subsequent faults will kill the process instead of being caught. */
 static void pc_signal_handler(int sig, siginfo_t* info, void* ucontext) {
     (void)ucontext;
     if (pc_active_jmpbuf != NULL) {
@@ -63,6 +65,11 @@ static void pc_signal_handler(int sig, siginfo_t* info, void* ucontext) {
             (unsigned int)(uintptr_t)info->si_addr : 0;
         jmp_buf* buf = pc_active_jmpbuf;
         pc_active_jmpbuf = NULL;
+        /* Unblock this signal so future crashes can be caught */
+        sigset_t ss;
+        sigemptyset(&ss);
+        sigaddset(&ss, sig);
+        sigprocmask(SIG_UNBLOCK, &ss, NULL);
         longjmp(*buf, 1);
     }
     signal(sig, SIG_DFL);
@@ -96,6 +103,10 @@ void pc_crash_set_jmpbuf(jmp_buf* buf) {
     pc_active_jmpbuf = buf;
 }
 
+jmp_buf* pc_crash_get_jmpbuf(void) {
+    return pc_active_jmpbuf;
+}
+
 unsigned int pc_crash_get_addr(void) {
     return pc_last_crash_addr;
 }
@@ -112,11 +123,11 @@ void pc_platform_init(void) {
 
 #ifdef PC_USE_GLES
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 #else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 #endif
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -350,6 +361,7 @@ int main(int argc, char* argv[]) {
         }
     }
 #endif
+    printf("[PC] Image range: 0x%08X - 0x%08X\n", pc_image_base, pc_image_end);
 
     SDL_SetMainReady();
     pc_settings_load();

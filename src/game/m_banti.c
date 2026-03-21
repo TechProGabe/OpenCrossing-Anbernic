@@ -8,7 +8,18 @@
 #include "m_font.h"
 #include "m_common_data.h"
 
+#ifdef TARGET_PC
+#include <stdio.h>
+#include <setjmp.h>
+extern void pc_crash_set_jmpbuf(jmp_buf* buf);
+extern jmp_buf* pc_crash_get_jmpbuf(void);
+extern unsigned int pc_crash_get_addr(void);
+#endif
+
 static Banti_c banti;
+#ifdef TARGET_PC
+static int banti_disabled = 0;
+#endif
 
 static void banti_animation_init_hiduke(Banti_anim_c* anim);
 static void banti_animation_init_jikan(Banti_anim_c* anim);
@@ -277,9 +288,52 @@ extern void banti_move(GAME_PLAY* play) {
     int addressable_type;
     int update;
 
+#ifdef TARGET_PC
+    /* Crash protection for the clock overlay (banti). If this function crashes,
+     * we disable it permanently — the clock is cosmetic and not needed for gameplay.
+     * This prevents an every-frame crash loop that blocks the game. */
+    static int banti_subpoint = 0;
+    static jmp_buf banti_jmpbuf;
+    jmp_buf* saved_jmpbuf;
+
+    if (banti_disabled) return;
+
+    {
+        ACTOR* pa = play->actor_info.list[ACTOR_PART_PLAYER].actor;
+        static int diag_done = 0;
+        if (!diag_done) {
+            printf("[banti] play=%p pa=%p banti=%p\n",
+                   (void*)play, (void*)pa, (void*)&banti);
+            diag_done = 1;
+        }
+        if (pa == NULL) return; /* player not spawned yet */
+    }
+
+    /* Install local crash handler, saving the outer (game_main) one */
+    saved_jmpbuf = pc_crash_get_jmpbuf();
+    pc_crash_set_jmpbuf(&banti_jmpbuf);
+    if (setjmp(banti_jmpbuf) != 0) {
+        /* Crashed inside banti_move — disable permanently */
+        banti_disabled = 1;
+        printf("[banti] CRASH at subpoint=%d addr=0x%08X — disabling clock overlay\n",
+               banti_subpoint, pc_crash_get_addr());
+        printf("[banti] play=%p pa=%p banti=%p\n",
+               (void*)play,
+               (void*)play->actor_info.list[ACTOR_PART_PLAYER].actor,
+               (void*)&banti);
+        pc_crash_set_jmpbuf(saved_jmpbuf);
+        return;
+    }
+
+    banti_subpoint = 1;
     banti_chk_disp_left(play);
 
+    banti_subpoint = 2;
     addressable_type = mPlib_Get_address_able_display();
+#else
+    banti_chk_disp_left(play);
+    addressable_type = mPlib_Get_address_able_display();
+#endif
 
     if (banti.addressable_type != addressable_type) {
         update = FALSE;
@@ -305,8 +359,18 @@ extern void banti_move(GAME_PLAY* play) {
         banti.timer = 0;
     }
 
+#ifdef TARGET_PC
+    banti_subpoint = 3;
+#endif
     banti_calc_disp_alpha_rate(play);
+#ifdef TARGET_PC
+    banti_subpoint = 4;
+#endif
     banti_time_check();
+#ifdef TARGET_PC
+    /* Restore outer crash handler */
+    pc_crash_set_jmpbuf(saved_jmpbuf);
+#endif
 }
 
 static int banti_draw_before(GAME* game, cKF_SkeletonInfo_R_c* keyframe, int joint_idx, Gfx** joint_shape,
@@ -535,6 +599,10 @@ extern void banti_draw(GAME_PLAY* play) {
     static u8* week_tex_table[lbRTC_WEEK] = { clk_win_sun_tex_rgb_ia8, clk_win_mon_tex_rgb_ia8, clk_win_tue_tex_rgb_ia8,
                                               clk_win_wed_tex_rgb_ia8, clk_win_thu_tex_rgb_ia8, clk_win_fri_tex_rgb_ia8,
                                               clk_win_sat_tex_rgb_ia8 };
+
+#ifdef TARGET_PC
+    if (banti_disabled) return;
+#endif
 
     if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELDTYPE_FG && mEv_CheckFirstIntro() != TRUE && banti.alpha > 0.01f) {
         GRAPH* g = play->game.graph;

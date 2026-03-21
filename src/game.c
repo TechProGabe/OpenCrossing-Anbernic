@@ -152,16 +152,19 @@ extern void game_main(GAME* this) {
 #ifdef TARGET_PC
     {
         static jmp_buf game_exec_jmpbuf;
+        static int crash_count = 0;
         pc_crash_set_jmpbuf(&game_exec_jmpbuf);
         if (setjmp(game_exec_jmpbuf) != 0) {
-            /* Recovered from crash in game exec */
-            printf("[PC] CRASH in game exec! doing_point=%d specific=0x%02X addr=0x%08X data=0x%08X\n",
-                this->doing_point, this->doing_point_specific,
+            /* Recovered from crash — skip rest of frame */
+            crash_count++;
+            printf("[PC] CRASH #%d in game frame! doing_point=0x%X specific=0x%02X addr=0x%08X data=0x%08X\n",
+                crash_count, this->doing_point, this->doing_point_specific,
                 pc_crash_get_addr(), pc_crash_get_data_addr());
-        } else {
-            this->exec(this);
+            pc_crash_set_jmpbuf(NULL);
+            this->frame_counter++;
+            return;
         }
-        pc_crash_set_jmpbuf(NULL);
+        this->exec(this);
     }
 #else
     this->exec(this);
@@ -177,6 +180,9 @@ extern void game_main(GAME* this) {
 #endif
     GRAPH_SET_DOING_POINT(graph, GAME_BGM_FINISHED);
     game_move_first(this);
+#ifdef TARGET_PC
+    pc_crash_set_jmpbuf(NULL);
+#endif
     this->frame_counter++;
 }
 

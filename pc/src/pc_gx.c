@@ -5,6 +5,13 @@ static GLushort quad_index_buf[(PC_GX_MAX_VERTS / 4) * 6];
 #include <math.h>
 #include <dolphin/gx/GXEnum.h>
 
+/* Per-frame timing accumulators for GL overhead measurement */
+static Uint64 s_flush_time_acc = 0;
+Uint64 s_texload_time_acc = 0;     /* non-static: also written from pc_gx_texture.c */
+
+Uint64 pc_gx_flush_time_us = 0;    /* exported for vi diagnostic */
+Uint64 pc_gx_texload_time_us = 0;
+
 /* Can't include GXTev.h — it uses enum types while we use u32 */
 void GXSetTevColorIn(u32 stage, u32 a, u32 b, u32 c, u32 d);
 void GXSetTevAlphaIn(u32 stage, u32 a, u32 b, u32 c, u32 d);
@@ -232,7 +239,9 @@ void pc_gx_init(void) {
     /* VAO setup: attrib pointers persist since PCGXVertex layout and VBO ID never change */
     glBindVertexArray(g_gx.vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_gx.vbo);
+
     glBufferData(GL_ARRAY_BUFFER, PC_GX_MAX_VERTS * sizeof(PCGXVertex), NULL, GL_STREAM_DRAW);
+
     {
         size_t stride = sizeof(PCGXVertex);
         glEnableVertexAttribArray(0);
@@ -248,7 +257,7 @@ void pc_gx_init(void) {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_gx.ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_index_buf), quad_index_buf, GL_STATIC_DRAW);
 
-    glBindVertexArray(0);
+    /* Keep VAO/VBO bound — never unbind, avoids redundant binds per draw */
 
     pc_gx_tev_init();
     pc_gx_texture_init();
@@ -331,16 +340,29 @@ void GXPosition3f32(f32 x, f32 y, f32 z) {
         g_gx.current_vertex_idx++;
     }
 
-    /* Reset vertex but carry last color forward */
-    u8 r = g_gx.current_vertex.color0[0];
-    u8 g = g_gx.current_vertex.color0[1];
-    u8 b = g_gx.current_vertex.color0[2];
-    u8 a = g_gx.current_vertex.color0[3];
-    memset(&g_gx.current_vertex, 0, sizeof(PCGXVertex));
-    g_gx.current_vertex.color0[0] = r;
-    g_gx.current_vertex.color0[1] = g;
-    g_gx.current_vertex.color0[2] = b;
-    g_gx.current_vertex.color0[3] = a;
+    /* Reset vertex — only zero fields that matter (not all 96 bytes).
+     * Carry last color forward. Only texcoord[0] is sent to GPU. */
+    {
+        u8 cr = g_gx.current_vertex.color0[0];
+        u8 cg = g_gx.current_vertex.color0[1];
+        u8 cb = g_gx.current_vertex.color0[2];
+        u8 ca = g_gx.current_vertex.color0[3];
+        g_gx.current_vertex.normal[0] = 0;
+        g_gx.current_vertex.normal[1] = 0;
+        g_gx.current_vertex.normal[2] = 0;
+        g_gx.current_vertex.color0[0] = cr;
+        g_gx.current_vertex.color0[1] = cg;
+        g_gx.current_vertex.color0[2] = cb;
+        g_gx.current_vertex.color0[3] = ca;
+        g_gx.current_vertex.color1[0] = 0;
+        g_gx.current_vertex.color1[1] = 0;
+        g_gx.current_vertex.color1[2] = 0;
+        g_gx.current_vertex.color1[3] = 0;
+        g_gx.current_vertex.texcoord[0][0] = 0;
+        g_gx.current_vertex.texcoord[0][1] = 0;
+        g_gx.current_vertex.texcoord[1][0] = 0;
+        g_gx.current_vertex.texcoord[1][1] = 0;
+    }
 
     g_gx.current_vertex.position[0] = x;
     g_gx.current_vertex.position[1] = y;
@@ -556,6 +578,7 @@ void pc_gx_flush_vertices(void) {
     int count = g_gx.current_vertex_idx;
     if (count == 0) return;
 
+    Uint64 t_flush_start = SDL_GetPerformanceCounter();
     pc_gx_draw_call_count++;
 
     GLuint shader = pc_gx_tev_get_shader(&g_gx);
@@ -565,10 +588,16 @@ void pc_gx_flush_vertices(void) {
         g_gx.current_shader = shader;
         pc_gx_cache_uniform_locations(shader);
         g_gx.dirty = PC_GX_DIRTY_ALL;
+        /* Set constant sampler bindings once per shader change */
+        {
+            GLint sl;
+            sl = g_gx.uloc.texture0; if (sl >= 0) glUniform1i(sl, 0);
+            sl = g_gx.uloc.texture1; if (sl >= 0) glUniform1i(sl, 1);
+            sl = g_gx.uloc.texture2; if (sl >= 0) glUniform1i(sl, 2);
+        }
     }
 
-    glBindVertexArray(g_gx.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, g_gx.vbo);
+    /* VAO/VBO stay bound from init. glBufferData orphans + uploads in one call. */
     glBufferData(GL_ARRAY_BUFFER, count * sizeof(PCGXVertex), g_gx.vertex_buffer, GL_STREAM_DRAW);
 
     /* Upload only dirty state groups */
@@ -672,17 +701,8 @@ void pc_gx_flush_vertices(void) {
             loc = UL(num_chans);  if (loc >= 0) glUniform1i(loc, g_gx.num_chans);
             loc = UL(alpha_lighting_enabled); if (loc >= 0) glUniform1i(loc, g_gx.chan_ctrl_enable[1]);
             loc = UL(alpha_mat_src); if (loc >= 0) glUniform1i(loc, g_gx.chan_ctrl_mat_src[1]);
-            {
-                int color_light_mask = g_gx.chan_ctrl_light_mask[0];
-                loc = UL(light_mask); if (loc >= 0) glUniform1i(loc, color_light_mask);
-                float lpos[8][3], lcol[8][4];
-                for (int i = 0; i < 8; i++) {
-                    memcpy(lpos[i], g_gx.lights[i].pos, sizeof(lpos[i]));
-                    memcpy(lcol[i], g_gx.lights[i].color, sizeof(lcol[i]));
-                }
-                loc = UL(light_pos[0]);   if (loc >= 0) glUniform3fv(loc, 8, &lpos[0][0]);
-                loc = UL(light_color[0]); if (loc >= 0) glUniform4fv(loc, 8, &lcol[0][0]);
-            }
+            /* Per-light pos/color arrays skipped — shader uses only ambient*material,
+             * no per-light loop. Saves 2 large uniform uploads + 56 float copies per draw. */
         }
 
         if (dirty & PC_GX_DIRTY_TEXGEN) {
@@ -715,51 +735,16 @@ void pc_gx_flush_vertices(void) {
                     glBindTexture(GL_TEXTURE_2D, tex_obj_stage[s]);
                 }
             }
+            glActiveTexture(GL_TEXTURE0);
             loc = UL(use_texture0); if (loc >= 0) glUniform1i(loc, use_tex_stage[0]);
             loc = UL(use_texture1); if (loc >= 0) glUniform1i(loc, use_tex_stage[1]);
             loc = UL(use_texture2); if (loc >= 0) glUniform1i(loc, use_tex_stage[2]);
-            loc = UL(texture0); if (loc >= 0) glUniform1i(loc, 0);
-            loc = UL(texture1); if (loc >= 0) glUniform1i(loc, 1);
-            loc = UL(texture2); if (loc >= 0) glUniform1i(loc, 2);
+            /* Sampler bindings (texture0=0, texture1=1, texture2=2) set once on shader init */
         }
 
-        /* Indirect textures on units 3-6 */
-        if (dirty & (PC_GX_DIRTY_INDIRECT | PC_GX_DIRTY_TEXTURES)) {
-            loc = UL(num_ind_stages); if (loc >= 0) glUniform1i(loc, g_gx.num_ind_stages);
-            for (int i = 0; i < g_gx.num_ind_stages && i < 4; i++) {
-                int ind_tex_map = g_gx.ind_order[i].tex_map;
-                if (ind_tex_map >= 0 && ind_tex_map < 8) {
-                    GLuint ind_tex = g_gx.gl_textures[ind_tex_map];
-                    if (ind_tex) {
-                        glActiveTexture(GL_TEXTURE3 + i);
-                        glBindTexture(GL_TEXTURE_2D, ind_tex);
-                    }
-                }
-                loc = UL(ind_tex[i]); if (loc >= 0) glUniform1i(loc, 3 + i);
-                loc = UL(ind_scale[i]);
-                if (loc >= 0) {
-                    float s_scale = 1.0f / (float)(1 << g_gx.ind_order[i].scale_s);
-                    float t_scale = 1.0f / (float)(1 << g_gx.ind_order[i].scale_t);
-                    glUniform2f(loc, s_scale, t_scale);
-                }
-            }
-            for (int i = 0; i < 3; i++) {
-                float scale_val = ldexpf(1.0f, g_gx.ind_mtx_scale[i] + 17) / 1024.0f;
-                float packed[6];
-                for (int j = 0; j < 6; j++)
-                    packed[j] = ((float*)g_gx.ind_mtx[i])[j] * scale_val;
-                loc = UL(ind_mtx_r0[i]); if (loc >= 0) glUniform3f(loc, packed[0], packed[1], packed[2]);
-                loc = UL(ind_mtx_r1[i]); if (loc >= 0) glUniform3f(loc, packed[3], packed[4], packed[5]);
-            }
-            for (int s = 0; s < g_gx.num_tev_stages && s < PC_GX_MAX_TEV_STAGES; s++) {
-                PCGXTevStage* ts = &g_gx.tev_stages[s];
-                loc = UL(tev_ind_cfg[s]);
-                if (loc >= 0) glUniform4i(loc, ts->ind_stage, ts->ind_mtx, ts->ind_bias, ts->ind_alpha);
-                loc = UL(tev_ind_wrap[s]);
-                if (loc >= 0) glUniform3i(loc, ts->ind_wrap_s, ts->ind_wrap_t, ts->ind_add_prev);
-            }
-        }
-        glActiveTexture(GL_TEXTURE0);
+        /* Indirect textures stripped — shader doesn't use them.
+         * Uniforms declared for C-side compat but never read in fragment shader.
+         * Skipping saves ~25 GL calls per draw on ARM Mali. */
 
         if (dirty & PC_GX_DIRTY_FOG) {
             loc = UL(fog_type);  if (loc >= 0) glUniform1i(loc, g_gx.fog_type);
@@ -887,6 +872,17 @@ void pc_gx_flush_vertices(void) {
         glBlendEquation(GL_FUNC_ADD);
 
     g_gx.dirty = 0;
+
+    s_flush_time_acc += SDL_GetPerformanceCounter() - t_flush_start;
+}
+
+/* Called from VIWaitForRetrace to snapshot & reset per-frame timing */
+void pc_gx_frame_timing_snapshot(void) {
+    Uint64 freq = SDL_GetPerformanceFrequency();
+    pc_gx_flush_time_us  = s_flush_time_acc * 1000000 / freq;
+    pc_gx_texload_time_us = s_texload_time_acc * 1000000 / freq;
+    s_flush_time_acc = 0;
+    s_texload_time_acc = 0;
 }
 
 /* --- Vertex Descriptor / Format --- */
@@ -1274,7 +1270,7 @@ void GXSetPixelFmt(u32 pix_fmt, u32 z_fmt) { (void)pix_fmt; (void)z_fmt; }
 void GXSetCullMode(u32 mode) {
     pc_gx_flush_if_begin_complete();
     DIRTY(PC_GX_DIRTY_CULL);
-    g_gx.cull_mode = g_pc_model_viewer_no_cull ? GX_CULL_NONE : mode;
+    g_gx.cull_mode = g_pc_model_viewer_no_cull ? GX_CULL_NONE : (int)mode;
 }
 void GXSetCoPlanar(GXBool enable) { (void)enable; }
 

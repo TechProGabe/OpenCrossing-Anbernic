@@ -104,6 +104,7 @@ int  pc_platform_poll_events(void);
 /* --- Crash protection (VEH + setjmp/longjmp) --- */
 void pc_crash_protection_init(void);
 void pc_crash_set_jmpbuf(jmp_buf* buf);  /* NULL to disable */
+jmp_buf* pc_crash_get_jmpbuf(void);
 unsigned int pc_crash_get_addr(void);
 unsigned int pc_crash_get_data_addr(void);
 

@@ -65,8 +65,8 @@ typedef struct {
     float normal[3];
     unsigned char color0[4];
     unsigned char color1[4];
-    float texcoord[8][2];
-} PCGXVertex;
+    float texcoord[2][2]; /* only [0] and [1] used (two tex gen units) — was [8][2] (48 bytes wasted) */
+} PCGXVertex; /* 48 bytes (was 96) — halves VBO upload bandwidth */
 
 typedef struct {
     int color_a, color_b, color_c, color_d;

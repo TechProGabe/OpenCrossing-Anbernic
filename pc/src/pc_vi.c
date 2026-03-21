@@ -1,6 +1,12 @@
 /* pc_vi.c - video interface → SDL window swap + frame pacing */
 #include "pc_platform.h"
 
+/* GL timing and frame reset from pc_gx.c */
+extern void pc_gx_frame_timing_snapshot(void);
+extern void pc_gx_begin_frame(void);
+extern Uint64 pc_gx_flush_time_us;
+extern Uint64 pc_gx_texload_time_us;
+
 #define VI_TVMODE_NTSC_INT    0
 #define VI_TVMODE_NTSC_DS     1
 #define VI_TVMODE_PAL_INT     4
@@ -62,14 +68,19 @@ void VIWaitForRetrace(void) {
     }
     Uint64 t_after_pace = SDL_GetPerformanceCounter();
 
+    /* Snapshot GL timing before reporting */
+    pc_gx_frame_timing_snapshot();
+
     /* report slow frames (>20ms = missed 60fps by >4ms) */
     if (frame_ms > 20.0 && g_pc_verbose) {
         double swap_ms = (double)(t_after_swap - t_before_swap) * 1000.0 / (double)perf_freq;
         double pace_ms = (double)(t_after_pace - t_before_pace) * 1000.0 / (double)perf_freq;
         double work_ms = (double)(vi_enter - frame_start_time) * 1000.0 / (double)perf_freq;
-        int audio_fill = pc_audio_get_buffer_fill();
-        printf("[STUTTER] frame %u: total=%.1fms work=%.1fms swap=%.1fms pace=%.1fms audio_fill=%d\n",
-               pc_frame_counter, frame_ms, work_ms - swap_ms - pace_ms, swap_ms, pace_ms, audio_fill);
+        double flush_ms = (double)pc_gx_flush_time_us / 1000.0;
+        double texld_ms = (double)pc_gx_texload_time_us / 1000.0;
+        printf("[STUTTER] frame %u: total=%.1fms work=%.1fms swap=%.1fms pace=%.1fms gl=%.1fms tex=%.1fms draws=%d\n",
+               pc_frame_counter, frame_ms, work_ms, swap_ms, pace_ms,
+               flush_ms, texld_ms, pc_gx_draw_call_count);
     }
 
     {
@@ -81,15 +92,26 @@ void VIWaitForRetrace(void) {
             Uint64 now = SDL_GetPerformanceCounter();
             double secs = (double)(now - fps_start) / (double)perf_freq;
             double fps = (double)fps_count / secs;
-            char title[64];
-            snprintf(title, sizeof(title), "Animal Crossing - %.1f FPS", fps);
+            char title[96];
+            snprintf(title, sizeof(title), "Animal Crossing - %.1f FPS (%d draws)", fps, pc_gx_draw_call_count);
             SDL_SetWindowTitle(g_pc_window, title);
+            if (g_pc_verbose) {
+                extern int pc_emu64_frame_cmds, pc_emu64_frame_crashes;
+                double flush_ms = (double)pc_gx_flush_time_us / 1000.0;
+                double texld_ms = (double)pc_gx_texload_time_us / 1000.0;
+                printf("[PERF] %.1f FPS | draws=%d cmds=%d crashes=%d gl=%.1fms tex=%.1fms\n",
+                       fps, pc_gx_draw_call_count, pc_emu64_frame_cmds, pc_emu64_frame_crashes,
+                       flush_ms, texld_ms);
+            }
             fps_start = now;
             fps_count = 0;
         }
     }
 
     frame_start_time = SDL_GetPerformanceCounter();
+
+    /* Reset per-frame counters and GL state for next frame */
+    pc_gx_begin_frame();
 
     retrace_count++;
     pc_frame_counter++;
