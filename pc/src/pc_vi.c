@@ -1,11 +1,14 @@
 /* pc_vi.c - video interface → SDL window swap + frame pacing */
 #include "pc_platform.h"
+#include "pc_settings.h"
 
 /* GL timing and frame reset from pc_gx.c */
 extern void pc_gx_frame_timing_snapshot(void);
 extern void pc_gx_begin_frame(void);
 extern Uint64 pc_gx_flush_time_us;
 extern Uint64 pc_gx_texload_time_us;
+
+static int frameskip_counter = 0;
 
 #define VI_TVMODE_NTSC_INT    0
 #define VI_TVMODE_NTSC_DS     1
@@ -44,7 +47,9 @@ void VIWaitForRetrace(void) {
     }
 
     Uint64 t_before_swap = SDL_GetPerformanceCounter();
-    pc_platform_swap_buffers();
+    if (!g_pc_frameskip_active) {
+        pc_platform_swap_buffers();
+    }
     Uint64 t_after_swap = SDL_GetPerformanceCounter();
 
     Uint64 t_before_pace = SDL_GetPerformanceCounter();
@@ -109,6 +114,20 @@ void VIWaitForRetrace(void) {
     }
 
     frame_start_time = SDL_GetPerformanceCounter();
+
+    /* Frameskip: decide if next frame should skip GL rendering */
+    if (g_pc_settings.frameskip > 0) {
+        frameskip_counter++;
+        if (frameskip_counter > g_pc_settings.frameskip) {
+            frameskip_counter = 0;
+            g_pc_frameskip_active = 0;  /* render this frame */
+        } else {
+            g_pc_frameskip_active = 1;  /* skip this frame */
+        }
+    } else {
+        g_pc_frameskip_active = 0;
+        frameskip_counter = 0;
+    }
 
     /* Reset per-frame counters and GL state for next frame */
     pc_gx_begin_frame();

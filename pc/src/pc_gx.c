@@ -281,6 +281,13 @@ void pc_gx_begin_frame(void) {
     pc_emu64_frame_cull_rejected = 0;
     pc_gx_draw_call_count = 0;
     g_pc_widescreen_stretch = 0;
+
+    /* Frameskip: skip all GL state reset on skipped frames */
+    if (g_pc_frameskip_active) {
+        g_gx.dirty = PC_GX_DIRTY_ALL;  /* force full re-upload on next rendered frame */
+        return;
+    }
+
     /* glClear respects write masks — must enable all before clearing */
     glDepthMask(GL_TRUE);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -580,6 +587,13 @@ void pc_gx_flush_vertices(void) {
 
     Uint64 t_flush_start = SDL_GetPerformanceCounter();
     pc_gx_draw_call_count++;
+
+    /* Frameskip: skip all GL work, just clear dirty flags and vertex buffer */
+    if (g_pc_frameskip_active) {
+        g_gx.dirty = 0;
+        s_flush_time_acc += SDL_GetPerformanceCounter() - t_flush_start;
+        return;
+    }
 
     GLuint shader = pc_gx_tev_get_shader(&g_gx);
     if (shader && shader != g_gx.current_shader) {
@@ -989,6 +1003,7 @@ void GXSetViewport(f32 left, f32 top, f32 wd, f32 ht, f32 nearz, f32 farz) {
     g_gx.viewport[3] = ht;
     g_gx.viewport[4] = nearz;
     g_gx.viewport[5] = farz;
+    if (g_pc_frameskip_active) return;
 #ifdef PC_ENHANCEMENTS
     {
         float sx = (float)g_pc_window_w / (float)PC_GC_WIDTH;
@@ -1033,6 +1048,7 @@ void GXSetScissor(u32 left, u32 top, u32 wd, u32 ht) {
     g_gx.scissor[1] = top;
     g_gx.scissor[2] = wd;
     g_gx.scissor[3] = ht;
+    if (g_pc_frameskip_active) return;
     glEnable(GL_SCISSOR_TEST);
 #ifdef PC_ENHANCEMENTS
     {
@@ -1753,7 +1769,7 @@ void* GXInit(void* base, u32 size) {
 }
 
 void GXSetMisc(u32 token, u32 val) { (void)token; (void)val; }
-void GXFlush(void) { glFlush(); }
+void GXFlush(void) { if (!g_pc_frameskip_active) glFlush(); }
 void GXResetWriteGatherPipe(void) {}
 void GXAbortFrame(void) {}
 void GXSetDrawSync(u16 token) { (void)token; }
