@@ -4,6 +4,7 @@ in vec2 v_texcoord0;
 in vec2 v_texcoord1;
 in vec3 v_normal;
 in float v_fog_z;
+in vec3 v_light_accum;
 
 uniform int u_fog_type;
 uniform float u_fog_start;
@@ -243,7 +244,7 @@ void main() {
         vec3 matC = (u_chan_mat_src != 0) ? v_color.rgb : u_mat_color.rgb;
         if (u_lighting_enabled != 0) {
             vec3 ambC = (u_chan_amb_src != 0) ? v_color.rgb : u_amb_color.rgb;
-            rasColor.rgb = matC * clamp(ambC, 0.0, 1.0);
+            rasColor.rgb = matC * clamp(ambC + v_light_accum, 0.0, 1.0);
         } else {
             rasColor.rgb = matC;
         }

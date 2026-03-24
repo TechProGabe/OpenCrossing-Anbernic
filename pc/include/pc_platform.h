@@ -98,6 +98,12 @@ extern int g_pc_widescreen_stretch;
 /* --- Frameskip --- */
 extern int g_pc_frameskip_active;  /* 1 = this frame is being skipped (no GL draws) */
 
+/* --- Camera zoom --- */
+extern float g_pc_zoom;  /* 1.0 = default, >1.0 = zoomed out, <1.0 = zoomed in */
+#define PC_ZOOM_MIN  0.5f
+#define PC_ZOOM_MAX  2.0f
+#define PC_ZOOM_STEP 0.02f
+
 /* --- Functions --- */
 void pc_platform_init(void);
 void pc_platform_shutdown(void);

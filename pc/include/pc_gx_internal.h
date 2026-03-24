@@ -213,6 +213,8 @@ typedef struct {
         GLint chan_mat_src, chan_amb_src, num_chans;
         GLint alpha_lighting_enabled, alpha_mat_src;
         GLint light_mask, light_pos[8], light_color[8];
+        GLint diff_fn, attn_fn;
+        GLint light_dir[8], light_a[8], light_k[8];
         GLint texmtx_enable[2], texmtx_row0[2], texmtx_row1[2], texgen_src[2];
         GLint use_texture0, use_texture1, use_texture2;
         GLint texture0, texture1, texture2;

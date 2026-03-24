@@ -522,11 +522,19 @@ static void pc_gx_cache_uniform_locations(GLuint shader) {
     g_gx.uloc.alpha_mat_src = UL("u_alpha_mat_src");
 
     g_gx.uloc.light_mask = UL("u_light_mask");
+    g_gx.uloc.diff_fn = UL("u_diff_fn");
+    g_gx.uloc.attn_fn = UL("u_attn_fn");
     for (i = 0; i < 8; i++) {
         snprintf(name, sizeof(name), "u_light_pos[%d]", i);
         g_gx.uloc.light_pos[i] = UL(name);
         snprintf(name, sizeof(name), "u_light_color[%d]", i);
         g_gx.uloc.light_color[i] = UL(name);
+        snprintf(name, sizeof(name), "u_light_dir[%d]", i);
+        g_gx.uloc.light_dir[i] = UL(name);
+        snprintf(name, sizeof(name), "u_light_a[%d]", i);
+        g_gx.uloc.light_a[i] = UL(name);
+        snprintf(name, sizeof(name), "u_light_k[%d]", i);
+        g_gx.uloc.light_k[i] = UL(name);
     }
 
     g_gx.uloc.texmtx_enable[0] = UL("u_texmtx_enable");
@@ -715,8 +723,26 @@ void pc_gx_flush_vertices(void) {
             loc = UL(num_chans);  if (loc >= 0) glUniform1i(loc, g_gx.num_chans);
             loc = UL(alpha_lighting_enabled); if (loc >= 0) glUniform1i(loc, g_gx.chan_ctrl_enable[1]);
             loc = UL(alpha_mat_src); if (loc >= 0) glUniform1i(loc, g_gx.chan_ctrl_mat_src[1]);
-            /* Per-light pos/color arrays skipped — shader uses only ambient*material,
-             * no per-light loop. Saves 2 large uniform uploads + 56 float copies per draw. */
+            /* Per-vertex lighting: upload light mask, diff/attn functions, and per-light data */
+            loc = UL(light_mask); if (loc >= 0) glUniform1i(loc, g_gx.chan_ctrl_light_mask[0]);
+            loc = UL(diff_fn);   if (loc >= 0) glUniform1i(loc, g_gx.chan_ctrl_diff_fn[0]);
+            loc = UL(attn_fn);   if (loc >= 0) glUniform1i(loc, g_gx.chan_ctrl_attn_fn[0]);
+            {
+                int li;
+                u32 mask = (u32)g_gx.chan_ctrl_light_mask[0];
+                for (li = 0; li < 8; li++) {
+                    if (mask & (1u << li)) {
+                        float a_vec[3], k_vec[3];
+                        loc = g_gx.uloc.light_pos[li];   if (loc >= 0) glUniform3fv(loc, 1, g_gx.lights[li].pos);
+                        loc = g_gx.uloc.light_color[li];  if (loc >= 0) glUniform4fv(loc, 1, g_gx.lights[li].color);
+                        loc = g_gx.uloc.light_dir[li];   if (loc >= 0) glUniform3fv(loc, 1, g_gx.lights[li].dir);
+                        a_vec[0] = g_gx.lights[li].a0; a_vec[1] = g_gx.lights[li].a1; a_vec[2] = g_gx.lights[li].a2;
+                        k_vec[0] = g_gx.lights[li].k0; k_vec[1] = g_gx.lights[li].k1; k_vec[2] = g_gx.lights[li].k2;
+                        loc = g_gx.uloc.light_a[li];     if (loc >= 0) glUniform3fv(loc, 1, a_vec);
+                        loc = g_gx.uloc.light_k[li];     if (loc >= 0) glUniform3fv(loc, 1, k_vec);
+                    }
+                }
+            }
         }
 
         if (dirty & PC_GX_DIRTY_TEXGEN) {
@@ -958,6 +984,11 @@ void GXSetProjection(const void* mtx, u32 type) {
         if (g_aspect_active) {
             g_gx.projection_mtx[0][0] *= g_aspect_factor;
         }
+    }
+    /* Camera zoom — only for perspective (3D world), not orthographic (UI) */
+    if (type == GX_PERSPECTIVE && g_pc_zoom != 1.0f) {
+        g_gx.projection_mtx[0][0] *= g_pc_zoom;
+        g_gx.projection_mtx[1][1] *= g_pc_zoom;
     }
 #endif
 }

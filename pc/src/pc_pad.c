@@ -11,6 +11,13 @@
 
 static SDL_GameController* g_controller = NULL;
 
+/* L1 double-tap detection for zoom reset */
+#define L1_DOUBLETAP_MS 300
+static Uint32 l1_last_release = 0;
+static int    l1_was_held = 0;
+static Uint32 kb_l_last_release = 0;
+static int    kb_l_was_held = 0;
+
 BOOL PADInit(void) {
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
         if (SDL_IsGameController(i)) {
@@ -42,6 +49,19 @@ u32 PADRead(PADStatus* status) {
     if (keys[kb->l])     buttons |= PAD_TRIGGER_L;
     if (keys[kb->r])     buttons |= PAD_TRIGGER_R;
 
+    /* Keyboard L double-tap to reset zoom */
+    {
+        int l_now = keys[kb->l];
+        if (l_now && !kb_l_was_held) {
+            Uint32 now = SDL_GetTicks();
+            if (now - kb_l_last_release < L1_DOUBLETAP_MS)
+                g_pc_zoom = 1.0f;
+        }
+        if (!l_now && kb_l_was_held)
+            kb_l_last_release = SDL_GetTicks();
+        kb_l_was_held = l_now;
+    }
+
     /* main stick */
     if (keys[kb->stick_up])    stickY += STICK_MAGNITUDE;
     if (keys[kb->stick_down])  stickY -= STICK_MAGNITUDE;
@@ -54,9 +74,17 @@ u32 PADRead(PADStatus* status) {
     if (keys[kb->cstick_left])  cstickX -= STICK_MAGNITUDE;
     if (keys[kb->cstick_right]) cstickX += STICK_MAGNITUDE;
 
-    /* D-pad */
-    if (keys[kb->dpad_up])    buttons |= PAD_BUTTON_UP;
-    if (keys[kb->dpad_down])  buttons |= PAD_BUTTON_DOWN;
+    /* D-pad — L + D-pad Up/Down = zoom */
+    if (keys[kb->l] && keys[kb->dpad_up]) {
+        g_pc_zoom += PC_ZOOM_STEP;
+        if (g_pc_zoom > PC_ZOOM_MAX) g_pc_zoom = PC_ZOOM_MAX;
+    } else if (keys[kb->l] && keys[kb->dpad_down]) {
+        g_pc_zoom -= PC_ZOOM_STEP;
+        if (g_pc_zoom < PC_ZOOM_MIN) g_pc_zoom = PC_ZOOM_MIN;
+    } else {
+        if (keys[kb->dpad_up])    buttons |= PAD_BUTTON_UP;
+        if (keys[kb->dpad_down])  buttons |= PAD_BUTTON_DOWN;
+    }
     if (keys[kb->dpad_left])  buttons |= PAD_BUTTON_LEFT;
     if (keys[kb->dpad_right]) buttons |= PAD_BUTTON_RIGHT;
 
@@ -83,10 +111,38 @@ u32 PADRead(PADStatus* status) {
         if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_Y)) buttons |= PAD_BUTTON_Y;
         if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_START)) buttons |= PAD_BUTTON_START;
         if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_BACK))  buttons |= PAD_BUTTON_START;
-        if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_LEFTSHOULDER))  buttons |= PAD_TRIGGER_L;
+        int l1_held = SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+        int dpad_up = SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
+        int dpad_down = SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+
+        /* L1 double-tap to reset zoom */
+        if (l1_held && !l1_was_held) {
+            /* L1 just pressed — check if it's a double-tap */
+            Uint32 now = SDL_GetTicks();
+            if (now - l1_last_release < L1_DOUBLETAP_MS) {
+                g_pc_zoom = 1.0f;
+            }
+        }
+        if (!l1_held && l1_was_held) {
+            /* L1 just released — record time */
+            l1_last_release = SDL_GetTicks();
+        }
+        l1_was_held = l1_held;
+
+        if (l1_held) buttons |= PAD_TRIGGER_L;
         if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) buttons |= PAD_TRIGGER_Z;
-        if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_DPAD_UP))    buttons |= PAD_BUTTON_UP;
-        if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN))  buttons |= PAD_BUTTON_DOWN;
+
+        /* L1 + D-pad Up/Down = camera zoom; otherwise pass D-pad to game */
+        if (l1_held && dpad_up) {
+            g_pc_zoom += PC_ZOOM_STEP;
+            if (g_pc_zoom > PC_ZOOM_MAX) g_pc_zoom = PC_ZOOM_MAX;
+        } else if (l1_held && dpad_down) {
+            g_pc_zoom -= PC_ZOOM_STEP;
+            if (g_pc_zoom < PC_ZOOM_MIN) g_pc_zoom = PC_ZOOM_MIN;
+        } else {
+            if (dpad_up)   buttons |= PAD_BUTTON_UP;
+            if (dpad_down) buttons |= PAD_BUTTON_DOWN;
+        }
         if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT))  buttons |= PAD_BUTTON_LEFT;
         if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) buttons |= PAD_BUTTON_RIGHT;
 

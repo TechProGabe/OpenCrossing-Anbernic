@@ -23,6 +23,7 @@ int           g_pc_window_w = PC_SCREEN_WIDTH;
 int           g_pc_window_h = PC_SCREEN_HEIGHT;
 int           g_pc_widescreen_stretch = 0;
 int           g_pc_frameskip_active = 0;
+float         g_pc_zoom = 1.0f;
 
 /* exe image range — used by seg2k0 to distinguish pointers from segment addresses */
 unsigned int pc_image_base = 0;
