@@ -426,7 +426,19 @@ extern int mCoBG_GetHoleNumber_ClData(mCoBG_Collision_u* col) {
     check_col.data.top_right -= min;
 
     for (i = 0; i < ARRAY_COUNT(mCoBG_hole_data); i++) {
+#ifdef TARGET_PC
+        /* On LE, bitfield positions in the u32 are reversed vs BE, so the raw
+           subtraction trick (which relies on unit_attribute sitting in the low
+           bits) doesn't work.  Compare the height fields individually instead. */
+        if (check_col.data.slate_flag == mCoBG_hole_data[i].data.slate_flag &&
+            check_col.data.center == mCoBG_hole_data[i].data.center &&
+            check_col.data.top_left == mCoBG_hole_data[i].data.top_left &&
+            check_col.data.bot_left == mCoBG_hole_data[i].data.bot_left &&
+            check_col.data.bot_right == mCoBG_hole_data[i].data.bot_right &&
+            check_col.data.top_right == mCoBG_hole_data[i].data.top_right) {
+#else
         if (attr == (check_col.raw - mCoBG_hole_data[i].raw)) {
+#endif
             return i;
         }
     }
