@@ -1,4 +1,3 @@
-/* pc_keybindings.c - customizable keyboard bindings loaded from keybindings.ini */
 #include "pc_keybindings.h"
 #include "pc_platform.h"
 
@@ -67,6 +66,19 @@ static const KeybindEntry s_entries[] = {
 
 #define NUM_ENTRIES (sizeof(s_entries) / sizeof(s_entries[0]))
 
+/* mouse button name table */
+typedef struct {
+    const char* name;
+    PCInputCode code;
+} MouseButtonEntry;
+
+static const MouseButtonEntry s_mouse_buttons[] = {
+    { "Mouse1", PC_INPUT_MOUSE1 },
+    { "Mouse2", PC_INPUT_MOUSE2 },
+    { "Mouse3", PC_INPUT_MOUSE3 },
+};
+#define NUM_MOUSE_BUTTONS (sizeof(s_mouse_buttons) / sizeof(s_mouse_buttons[0]))
+
 static const char* skip_ws(const char* s) {
     while (*s == ' ' || *s == '\t') s++;
     return s;
@@ -80,16 +92,46 @@ static void trim_end(char* s) {
     }
 }
 
-static void apply_keybind(const char* key, const char* value) {
+/* get display name for an input code */
+static const char* input_code_name(PCInputCode code) {
+    if (code & PC_INPUT_MOUSE_BIT) {
+        for (int i = 0; i < (int)NUM_MOUSE_BUTTONS; i++) {
+            if (s_mouse_buttons[i].code == code)
+                return s_mouse_buttons[i].name;
+        }
+        return "Unknown";
+    }
+    return SDL_GetScancodeName((SDL_Scancode)code);
+}
+
+/* parse an input value string to a PCInputCode */
+static PCInputCode parse_input_code(const char* value) {
+    /* check mouse button names first (case-insensitive) */
+    for (int i = 0; i < (int)NUM_MOUSE_BUTTONS; i++) {
+        if (SDL_strcasecmp(value, s_mouse_buttons[i].name) == 0) {
+            return s_mouse_buttons[i].code;
+        }
+    }
+
+    /* fall back to SDL scancode */
     SDL_Scancode sc = SDL_GetScancodeFromName(value);
-    if (sc == SDL_SCANCODE_UNKNOWN) {
+    if (sc != SDL_SCANCODE_UNKNOWN) {
+        return (PCInputCode)sc;
+    }
+
+    return -1; /* invalid */
+}
+
+static void apply_keybind(const char* key, const char* value) {
+    PCInputCode code = parse_input_code(value);
+    if (code < 0) {
         printf("[Keybindings] WARNING: unknown key name '%s' for '%s'\n", value, key);
         return;
     }
 
     for (int i = 0; i < (int)NUM_ENTRIES; i++) {
         if (strcmp(key, s_entries[i].ini_key) == 0) {
-            *(SDL_Scancode*)((char*)&g_pc_keybindings + s_entries[i].offset) = sc;
+            *(PCInputCode*)((char*)&g_pc_keybindings + s_entries[i].offset) = code;
             return;
         }
     }
@@ -105,13 +147,14 @@ static void write_defaults(const char* path) {
     fprintf(f, "# Common names: Space, Left Shift, Right Shift, Left Ctrl, Right Ctrl,\n");
     fprintf(f, "#   Left Alt, Right Alt, Return, Escape, Tab, Backspace, Delete,\n");
     fprintf(f, "#   A-Z, 0-9, F1-F12, Up, Down, Left, Right, etc.\n");
+    fprintf(f, "# Mouse buttons: Mouse1 (left), Mouse2 (right), Mouse3 (middle)\n");
     fprintf(f, "# Full list: https://wiki.libsdl.org/SDL2/SDL_Scancode\n");
     fprintf(f, "\n");
     fprintf(f, "# Buttons\n");
 
     for (int i = 0; i < (int)NUM_ENTRIES; i++) {
-        SDL_Scancode sc = *(SDL_Scancode*)((char*)&g_pc_keybindings + s_entries[i].offset);
-        const char* name = SDL_GetScancodeName(sc);
+        PCInputCode code = *(PCInputCode*)((char*)&g_pc_keybindings + s_entries[i].offset);
+        const char* name = input_code_name(code);
         fprintf(f, "%s = %s\n", s_entries[i].ini_key, name);
 
         /* blank line separators between sections */

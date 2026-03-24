@@ -2,39 +2,49 @@
 #define PC_KEYBINDINGS_H
 
 #include <SDL2/SDL_scancode.h>
+#include <SDL2/SDL_mouse.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/* PCInputCode: values 0..SDL_NUM_SCANCODES-1 are keyboard scancodes.
+   Values with PC_INPUT_MOUSE_BIT set are mouse buttons (low bits = SDL button index). */
+typedef int PCInputCode;
+
+#define PC_INPUT_MOUSE_BIT   0x10000
+#define PC_INPUT_MOUSE1      (PC_INPUT_MOUSE_BIT | SDL_BUTTON_LEFT)    /* left click */
+#define PC_INPUT_MOUSE2      (PC_INPUT_MOUSE_BIT | SDL_BUTTON_RIGHT)   /* right click */
+#define PC_INPUT_MOUSE3      (PC_INPUT_MOUSE_BIT | SDL_BUTTON_MIDDLE)  /* middle click */
+
 typedef struct {
     /* buttons */
-    SDL_Scancode a;
-    SDL_Scancode b;
-    SDL_Scancode x;
-    SDL_Scancode y;
-    SDL_Scancode start;
-    SDL_Scancode z;
-    SDL_Scancode l;
-    SDL_Scancode r;
+    PCInputCode a;
+    PCInputCode b;
+    PCInputCode x;
+    PCInputCode y;
+    PCInputCode start;
+    PCInputCode z;
+    PCInputCode l;
+    PCInputCode r;
 
     /* main stick */
-    SDL_Scancode stick_up;
-    SDL_Scancode stick_down;
-    SDL_Scancode stick_left;
-    SDL_Scancode stick_right;
+    PCInputCode stick_up;
+    PCInputCode stick_down;
+    PCInputCode stick_left;
+    PCInputCode stick_right;
 
     /* C-stick */
-    SDL_Scancode cstick_up;
-    SDL_Scancode cstick_down;
-    SDL_Scancode cstick_left;
-    SDL_Scancode cstick_right;
+    PCInputCode cstick_up;
+    PCInputCode cstick_down;
+    PCInputCode cstick_left;
+    PCInputCode cstick_right;
 
     /* D-pad */
-    SDL_Scancode dpad_up;
-    SDL_Scancode dpad_down;
-    SDL_Scancode dpad_left;
-    SDL_Scancode dpad_right;
+    PCInputCode dpad_up;
+    PCInputCode dpad_down;
+    PCInputCode dpad_left;
+    PCInputCode dpad_right;
 } PCKeybindings;
 
 extern PCKeybindings g_pc_keybindings;
