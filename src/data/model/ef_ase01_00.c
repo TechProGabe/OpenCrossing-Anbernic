@@ -6,7 +6,7 @@
 #include "ef_effect_control.h"
 
 #ifdef TARGET_PC
-static u8 ef_ase01_0[0x80] ATTRIBUTE_ALIGN(32);
+static u8 ef_ase01_0[0x100] ATTRIBUTE_ALIGN(32);
 #else
 static u8 ef_ase01_0[] ATTRIBUTE_ALIGN(32) = {
 #include "assets/ef_ase01_00/ef_ase01_0.inc"
