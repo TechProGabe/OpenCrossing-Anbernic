@@ -39,6 +39,22 @@ void pc_bswap_asset_vtx(void* data, unsigned int size) {
     }
 }
 
+/* Convert N64 RGBA5551 palette to GC RGB5A3 in-place.
+ * Use after pc_load_asset for palettes shared between N64-path (gsDPLoadTLUTCmd)
+ * and Dolphin-path (gsDPLoadTLUT_Dolphin) models. There is only one that I'm aware of, (Fishing rod)
+ * but might be more that went unnoticed */
+void pc_assets_pal_n64_to_gc(u16* pal, int count) {
+    int i;
+    for (i = 0; i < count; i++) {
+        u16 v = pal[i];
+        if (v & 1) { /* opaque: set RGB555 flag, shift color bits */
+            pal[i] = 0x8000 | (v >> 1);
+        } else { /* transparent: repack as ARGB3444 */
+            pal[i] = (u16)(((v >> 4) & 0xFF00) | ((v >> 3) & 0xF0) | ((v >> 2) & 0x0F));
+        }
+    }
+}
+
 static void do_swap(void* data, unsigned int size, int type) {
     switch (type) {
         case SWAP_U16: pc_bswap_asset_u16(data, size); break;
