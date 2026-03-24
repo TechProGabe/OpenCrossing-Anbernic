@@ -812,6 +812,12 @@ static void aMR_SetNicePos(xyz_t* nice_pos, xyz_t player_pos, f32* col_start_xz,
                            aMR_contact_info_c* contact_info, int type) {
     f32 nice_point[2];
     f32* norm;
+#ifdef TARGET_PC
+    /* Needs the epsilon on x86 because float is doing float things. Fixes getting softlocked on furniture. */
+#define NICE_POS_EDGE_EQ(a, b) (ABS((a) - (b)) < 0.1f)
+#else
+#define NICE_POS_EDGE_EQ(a, b) ((a) == (b))
+#endif
 
     norm = contact_info->normal_p;
     *nice_pos = player_pos;
@@ -819,7 +825,7 @@ static void aMR_SetNicePos(xyz_t* nice_pos, xyz_t player_pos, f32* col_start_xz,
     switch (type) {
         case 1:
         case 2: {
-            if (col_start_xz[0] == col_end_xz[0]) {
+            if (NICE_POS_EDGE_EQ(col_start_xz[0], col_end_xz[0])) {
                 f32 len_z = ABS(col_start_xz[1] - col_end_xz[1]);
 
                 if (len_z > mFI_UT_WORLDSIZE_Z_F) {
@@ -829,7 +835,7 @@ static void aMR_SetNicePos(xyz_t* nice_pos, xyz_t player_pos, f32* col_start_xz,
                 } else {
                     nice_pos->z = (col_start_xz[1] + col_end_xz[1]) * 0.5f;
                 }
-            } else if (col_start_xz[1] == col_end_xz[1]) {
+            } else if (NICE_POS_EDGE_EQ(col_start_xz[1], col_end_xz[1])) {
                 f32 len_x = ABS(col_start_xz[0] - col_end_xz[0]);
 
                 if (len_x > mFI_UT_WORLDSIZE_X_F) {
@@ -844,7 +850,7 @@ static void aMR_SetNicePos(xyz_t* nice_pos, xyz_t player_pos, f32* col_start_xz,
         }
 
         case 0: {
-            if (col_start_xz[0] == col_end_xz[0]) {
+            if (NICE_POS_EDGE_EQ(col_start_xz[0], col_end_xz[0])) {
                 nice_pos->z = (col_start_xz[1] + col_end_xz[1]) * 0.5f;
 
                 if (norm[0] > 0.0f) {
@@ -852,7 +858,7 @@ static void aMR_SetNicePos(xyz_t* nice_pos, xyz_t player_pos, f32* col_start_xz,
                 } else {
                     nice_pos->x = col_start_xz[0] - mFI_UT_WORLDSIZE_HALF_X_F;
                 }
-            } else if (col_start_xz[1] == col_end_xz[1]) {
+            } else if (NICE_POS_EDGE_EQ(col_start_xz[1], col_end_xz[1])) {
                 nice_pos->x = (col_start_xz[0] + col_end_xz[0]) * 0.5f;
 
                 if (norm[1] > 0.0f) {
@@ -865,6 +871,8 @@ static void aMR_SetNicePos(xyz_t* nice_pos, xyz_t player_pos, f32* col_start_xz,
             break;
         }
     }
+
+#undef NICE_POS_EDGE_EQ
 }
 
 static int aMR_FtrIdx2ChangeFtrSwitch(ACTOR* actorx, int ftrID) {
