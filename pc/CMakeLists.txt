@@ -50,7 +50,8 @@ add_compile_definitions(
     F3DEX_GBI_2
     NDEBUG
     _LANGUAGE_C    # Required for N64 GBI/ultratypes headers
-    PC_ENHANCEMENTS  # Optional visual improvements (MSAA, etc). Remove to get pure PC port.
+    PC_ENHANCEMENTS   # Optional visual improvements (MSAA, etc). Remove to get pure PC port.
+    KEYBOARD_TYPING   # Physical keyboard typing in text editor. Remove for platforms without keyboards.
 )
 
 # _GNU_SOURCE: required only for pc_main.c (dladdr/Dl_info for image range detection).
@@ -321,6 +322,7 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_os.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_dvd.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_pad.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_typing.c
     ${DECOMP_ROOT}/src/static/dolphin/pad/Padclamp.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_card.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_vi.c

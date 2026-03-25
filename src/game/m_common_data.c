@@ -2,26 +2,14 @@
 
 #include "libultra/libultra.h"
 #ifdef TARGET_PC
-#include <string.h>
+#include "m_card.h"
 #endif
 
 common_data_t common_data;
 
-
 extern void common_data_reinit(){
 
     u8 state;
-#ifdef TARGET_PC
-    /* On PC, save data lives in common_data.save (loaded from disk).
-     * Preserve it across reinit — on GC, saves live on the memory card
-     * and get loaded later, but on PC we loaded it at boot. */
-    extern int pc_save_loaded;
-    static Save save_backup; /* static: Save is ~152KB, too large for stack */
-    int had_save = pc_save_loaded;
-    if (had_save) {
-        memcpy(&save_backup, &common_data.save, sizeof(Save));
-    }
-#endif
 
     state = Common_Get(pad_connected);
 
@@ -34,8 +22,11 @@ extern void common_data_reinit(){
     Common_Set(pad_connected, state);
 
 #ifdef TARGET_PC
-    if (had_save) {
-        memcpy(&common_data.save, &save_backup, sizeof(Save));
+    /* GC re-reads the memory card here. We re-read the GCI file, same idea.
+     * Title demo trashes the in-memory save (player/animal slots), so we
+     * need a fresh copy from disk before anything touches it again. */
+    if (pc_save_loaded) {
+        pc_save_reload();
     } else
 #endif
     mFRm_ClearSaveCheckData(Save_GetPointer(save_check));

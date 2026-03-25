@@ -7,6 +7,7 @@
 #include "pc_assets.h"
 #include "pc_disc.h"
 #include "pc_overlay.h"
+#include "pc_typing.h"
 
 /* prefer discrete GPU on laptops */
 #ifdef _WIN32
@@ -20,13 +21,15 @@ int           g_pc_running = 1;
 int           g_pc_no_framelimit = 0;
 int           g_pc_verbose = 0;
 int           g_pc_time_override = -1; /* -1=system clock, 0-23=override hour */
+int           g_pc_min_override = -1; /* -1=system clock, 0-59=override minute */
+int           g_pc_sec_override = -1; /* -1=system clock, 0-59=override second */
 int           g_pc_window_w = PC_SCREEN_WIDTH;
 int           g_pc_window_h = PC_SCREEN_HEIGHT;
 int           g_pc_widescreen_stretch = 0;
 int           g_pc_frameskip_active = 0;
 float         g_pc_zoom = 1.0f;
 
-/* exe image range — used by seg2k0 to distinguish pointers from segment addresses */
+/* exe image range -- used by seg2k0 to distinguish pointers from segment addresses */
 unsigned int pc_image_base = 0;
 unsigned int pc_image_end  = 0;
 
@@ -258,6 +261,9 @@ static int pc_confirm_quit(void) {
 
 int pc_platform_poll_events(void) {
     SDL_Event event;
+
+    pc_typing_update();
+
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
             case SDL_QUIT:
@@ -285,6 +291,10 @@ int pc_platform_poll_events(void) {
                 if (event.key.keysym.sym == SDLK_TAB && !event.key.repeat) {
                     pc_overlay_toggle();
                 }
+                pc_typing_handle_event(&event);
+                break;
+            case SDL_TEXTINPUT:
+                pc_typing_handle_event(&event);
                 break;
             case SDL_CONTROLLERBUTTONDOWN:
                 if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
@@ -307,7 +317,7 @@ int main(int argc, char* argv[]) {
             printf("  --verbose, -v       Enable diagnostic output\n");
             printf("  --no-framelimit     Disable frame limiter\n");
             printf("  --model-viewer [N]  Launch model viewer (optional start index)\n");
-            printf("  --time HOUR         Override in-game hour (0-23)\n");
+            printf("  --time H[:M[:S]]    Override in-game time (e.g. 5, 17:30, 5:55:00)\n");
             printf("  --help, -h          Show this help message\n");
             return 0;
         } else if (strcmp(argv[i], "--no-framelimit") == 0) {
@@ -321,8 +331,11 @@ int main(int argc, char* argv[]) {
                 i++;
             }
         } else if (strcmp(argv[i], "--time") == 0 && i + 1 < argc) {
-            g_pc_time_override = atoi(argv[i + 1]);
-            if (g_pc_time_override < 0 || g_pc_time_override > 23) g_pc_time_override = -1;
+            int h = -1, m = -1, s = -1;
+            sscanf(argv[i + 1], "%d:%d:%d", &h, &m, &s);
+            if (h >= 0 && h <= 23) g_pc_time_override = h;
+            if (m >= 0 && m <= 59) g_pc_min_override = m;
+            if (s >= 0 && s <= 59) g_pc_sec_override = s;
             i++;
         }
     }

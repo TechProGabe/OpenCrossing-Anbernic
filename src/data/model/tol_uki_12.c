@@ -51,8 +51,12 @@ Gfx tol_uki1_model[] = {
 
 #ifdef TARGET_PC
 extern void pc_load_asset(const char*, void*, unsigned int, unsigned int, int, int);
+extern void pc_assets_pal_n64_to_gc(u16*, int);
 void _pc_load_src_data_model_tol_uki_12_c(void) {
     pc_load_asset("assets/tol_uki_12/tol_sao_1_pal.bin", tol_sao_1_pal, 0x20, 0x721410, 0, 1);
+    /* Palette ROM offset shared with tol_uki_1.c (N64 TLUT path = RGBA5551).
+     * This model uses gsDPLoadTLUT_Dolphin which expects RGB5A3. */
+    pc_assets_pal_n64_to_gc(tol_sao_1_pal, 16);
     pc_load_asset("assets/tol_uki_12/tol_sao_1_uki1_tex_txt.bin", tol_sao_1_uki1_tex_txt, 0x100, 0x721430, 0, 0);
     pc_load_asset("assets/tol_uki_12/tol_uki_1_v.bin", tol_uki_1_v, 0x180, 0x721530, 0, 2);
 }

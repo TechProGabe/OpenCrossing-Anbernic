@@ -425,6 +425,17 @@ static int pc_save_scan_gci_dir(void) {
     return FALSE;
 }
 
+/* Reload save from GCI file on disk. PC equivalent of GC re-reading the
+ * memory card. */
+int pc_save_reload(void) {
+    struct stat st;
+    if (!pc_save_loaded) return 0;
+    if (stat(PC_GCI_PATH, &st) == 0) {
+        return pc_save_read_gci(PC_GCI_PATH);
+    }
+    return pc_save_scan_gci_dir();
+}
+
 int pc_save_check_and_load(void) {
     struct stat st;
     {
@@ -488,6 +499,14 @@ void mCD_InitAll(void) {
 
 int mCD_InitGameStart_bg(int player_no, int card_private_idx, int start_cond, s32* mounted_chan) {
     static int init_done = 0;
+
+    /* On GC, save is re-read from the memory card each game start.
+     * On PC, the save was already reloaded from disk in common_data_reinit
+     * and aAL_title_game_data_init_start_select. We just need to allow
+     * mSDI_StartDataInit to re-process it. */
+    if (init_done && pc_save_loaded) {
+        init_done = 0;
+    }
 
     if (!init_done) {
         init_done = 1; /* before call — prevents re-entry via crash recovery */
