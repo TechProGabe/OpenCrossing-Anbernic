@@ -1,6 +1,7 @@
 /* pc_vi.c - video interface → SDL window swap + frame pacing */
 #include "pc_platform.h"
 #include "pc_settings.h"
+#include "pc_overlay.h"
 
 /* GL timing and frame reset from pc_gx.c */
 extern void pc_gx_frame_timing_snapshot(void);
@@ -48,6 +49,7 @@ void VIWaitForRetrace(void) {
 
     Uint64 t_before_swap = SDL_GetPerformanceCounter();
     if (!g_pc_frameskip_active) {
+        pc_overlay_draw();
         pc_platform_swap_buffers();
     }
     Uint64 t_after_swap = SDL_GetPerformanceCounter();
@@ -100,6 +102,7 @@ void VIWaitForRetrace(void) {
             char title[96];
             snprintf(title, sizeof(title), "Animal Crossing - %.1f FPS (%d draws)", fps, pc_gx_draw_call_count);
             SDL_SetWindowTitle(g_pc_window, title);
+            pc_overlay_update(fps, fps / 60.0 * 100.0);
             if (g_pc_verbose) {
                 extern int pc_emu64_frame_cmds, pc_emu64_frame_crashes;
                 double flush_ms = (double)pc_gx_flush_time_us / 1000.0;

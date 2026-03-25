@@ -6,6 +6,7 @@
 #include "pc_keybindings.h"
 #include "pc_assets.h"
 #include "pc_disc.h"
+#include "pc_overlay.h"
 
 /* prefer discrete GPU on laptops */
 #ifdef _WIN32
@@ -199,6 +200,7 @@ void pc_platform_init(void) {
 #endif
 
     pc_gx_init();
+    pc_overlay_init();
     pc_texture_pack_init();
 #ifdef PC_ENHANCEMENTS
     if (g_pc_settings.preload_textures) {
@@ -213,6 +215,7 @@ void pc_platform_shutdown(void) {
     pc_audio_shutdown();
     pc_audio_mq_shutdown();
     PADCleanup();
+    pc_overlay_shutdown();
     pc_texture_pack_shutdown();
     pc_gx_shutdown();
 
@@ -279,6 +282,14 @@ int pc_platform_poll_events(void) {
                     g_pc_no_framelimit ^= 1;
                     printf("[PC] Frame limiter %s\n", g_pc_no_framelimit ? "OFF" : "ON");
                 }
+                if (event.key.keysym.sym == SDLK_TAB && !event.key.repeat) {
+                    pc_overlay_toggle();
+                }
+                break;
+            case SDL_CONTROLLERBUTTONDOWN:
+                if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
+                    pc_overlay_toggle();
+                }
                 break;
         }
     }
@@ -314,21 +325,6 @@ int main(int argc, char* argv[]) {
             if (g_pc_time_override < 0 || g_pc_time_override > 23) g_pc_time_override = -1;
             i++;
         }
-    }
-
-    /* Redirect stdout/stderr to NUL unless verbose — unbuffered terminal writes
-     * are extremely slow on Windows and tank FPS. */
-    if (!g_pc_verbose) {
-#ifdef _WIN32
-        freopen("NUL", "w", stdout);
-        freopen("NUL", "w", stderr);
-#else
-        freopen("/dev/null", "w", stdout);
-        freopen("/dev/null", "w", stderr);
-#endif
-    } else {
-        setvbuf(stdout, NULL, _IONBF, 0);
-        setvbuf(stderr, NULL, _IONBF, 0);
     }
 
     /* exe image range for seg2k0 — BSS can overlap N64 segment addresses */
@@ -367,6 +363,23 @@ int main(int argc, char* argv[]) {
 
     SDL_SetMainReady();
     pc_settings_load();
+
+    /* Merge verbose: CLI --verbose or settings.ini verbose=1 */
+    if (g_pc_settings.verbose) g_pc_verbose = 1;
+
+    /* Redirect stdout/stderr based on verbose mode.
+     * Non-verbose: log to file (not /dev/null) so startup info is always captured.
+     * Verbose: keep console output, unbuffered for real-time diagnostics.
+     * Terminal writes are extremely slow on Windows and tank FPS, so
+     * non-verbose redirects even stdout to the log file. */
+    if (!g_pc_verbose) {
+        freopen("AnimalCrossing.log", "w", stdout);
+        freopen("AnimalCrossing.log", "a", stderr);
+    } else {
+        setvbuf(stdout, NULL, _IONBF, 0);
+        setvbuf(stderr, NULL, _IONBF, 0);
+    }
+
     pc_keybindings_load();
     pc_platform_init();
     pc_disc_init();

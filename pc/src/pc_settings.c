@@ -10,6 +10,7 @@ PCSettings g_pc_settings = {
     .msaa          = 4,
     .preload_textures = 0,
     .frameskip = 0,
+    .verbose = 0,
 };
 
 static const char* SETTINGS_FILE = "settings.ini";
@@ -35,7 +36,11 @@ static const char* DEFAULT_SETTINGS =
     "\n"
     "[Performance]\n"
     "# Frameskip: 0 = off, 1 = skip every other frame, 2 = skip 2 of 3, etc.\n"
-    "frameskip = 0\n";
+    "frameskip = 0\n"
+    "\n"
+    "[Debug]\n"
+    "# Verbose logging: 0 = off (log to AnimalCrossing.log), 1 = on (log to console)\n"
+    "verbose = 0\n";
 
 static const char* skip_ws(const char* s) {
     while (*s == ' ' || *s == '\t') s++;
@@ -68,6 +73,8 @@ static void apply_setting(const char* key, const char* value) {
         if (val >= 0 && val <= 2) g_pc_settings.preload_textures = val;
     } else if (strcmp(key, "frameskip") == 0) {
         if (val >= 0 && val <= 4) g_pc_settings.frameskip = val;
+    } else if (strcmp(key, "verbose") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.verbose = val;
     }
 }
 
@@ -106,6 +113,10 @@ void pc_settings_save(void) {
     fprintf(f, "[Performance]\n");
     fprintf(f, "# Frameskip: 0 = off, 1 = skip every other frame, 2 = skip 2 of 3, etc.\n");
     fprintf(f, "frameskip = %d\n", g_pc_settings.frameskip);
+    fprintf(f, "\n");
+    fprintf(f, "[Debug]\n");
+    fprintf(f, "# Verbose logging: 0 = off (log to AnimalCrossing.log), 1 = on (log to console)\n");
+    fprintf(f, "verbose = %d\n", g_pc_settings.verbose);
     fclose(f);
     printf("[Settings] Saved %s\n", SETTINGS_FILE);
 }

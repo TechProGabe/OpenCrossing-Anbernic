@@ -13,6 +13,7 @@ typedef struct {
     int msaa;             /* 0=off, 2/4/8=samples */
     int preload_textures; /* 0=off (load on demand), 1=on (load all at startup), 2=on + cache file */
     int frameskip;        /* 0=off, 1=skip every other frame, 2=skip 2 of 3, etc. */
+    int verbose;          /* 0=log to file, 1=log to console */
 } PCSettings;
 
 extern PCSettings g_pc_settings;
