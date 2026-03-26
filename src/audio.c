@@ -43,6 +43,9 @@ extern void sAdo_Calc_MicPosition_forLevel(f32* fcalc, u16* scalc, const xyz_t* 
 }
 
 extern void sAdo_GameFrame() {
+#ifdef TARGET_PC
+    { extern void pc_audio_update_volumes(void); pc_audio_update_volumes(); }
+#endif
     Na_GameFrame();
     /* pc_audio_process_frame() now runs on dedicated audio producer thread */
 }

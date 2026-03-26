@@ -157,7 +157,7 @@ extern void game_main(GAME* this) {
         if (setjmp(game_exec_jmpbuf) != 0) {
             /* Recovered from crash — skip rest of frame */
             crash_count++;
-            printf("[PC] CRASH #%d in game frame! doing_point=0x%X specific=0x%02X addr=0x%08X data=0x%08X\n",
+            fprintf(stderr, "[PC] CRASH #%d in game frame! doing_point=0x%X specific=0x%02X addr=0x%08X data=0x%08X\n",
                 crash_count, this->doing_point, this->doing_point_specific,
                 pc_crash_get_addr(), pc_crash_get_data_addr());
             pc_crash_set_jmpbuf(NULL);

@@ -1,5 +1,6 @@
 /* pc_pad.c - GC controller input via SDL gamepad + keyboard */
 #include "pc_platform.h"
+#include "pc_settings.h"
 #include "pc_typing.h"
 #include "pc_keybindings.h"
 #include <dolphin/pad.h>
@@ -33,6 +34,12 @@ BOOL PADInit(void) {
 
 u32 PADRead(PADStatus* status) {
     memset(status, 0, sizeof(PADStatus) * 4);
+
+    /* Suppress all game input while settings menu is open */
+    if (g_pc_menu_open) {
+        status[0].err = 0;
+        return PAD_CHAN0_BIT;
+    }
 
     const u8* keys = SDL_GetKeyboardState(NULL);
     u32 mouse = SDL_GetMouseState(NULL, NULL);
@@ -84,11 +91,11 @@ u32 PADRead(PADStatus* status) {
         if (INPUT_PRESSED(kb->cstick_left))  cstickX -= STICK_MAGNITUDE;
         if (INPUT_PRESSED(kb->cstick_right)) cstickX += STICK_MAGNITUDE;
 
-        /* D-pad — L + D-pad Up/Down = zoom */
-        if (INPUT_PRESSED(kb->l) && INPUT_PRESSED(kb->dpad_up)) {
+        /* D-pad — L + D-pad Up/Down = zoom (when enabled) */
+        if (g_pc_settings.zoom_enabled && INPUT_PRESSED(kb->l) && INPUT_PRESSED(kb->dpad_up)) {
             g_pc_zoom += PC_ZOOM_STEP;
             if (g_pc_zoom > PC_ZOOM_MAX) g_pc_zoom = PC_ZOOM_MAX;
-        } else if (INPUT_PRESSED(kb->l) && INPUT_PRESSED(kb->dpad_down)) {
+        } else if (g_pc_settings.zoom_enabled && INPUT_PRESSED(kb->l) && INPUT_PRESSED(kb->dpad_down)) {
             g_pc_zoom -= PC_ZOOM_STEP;
             if (g_pc_zoom < PC_ZOOM_MIN) g_pc_zoom = PC_ZOOM_MIN;
         } else {
@@ -146,10 +153,10 @@ u32 PADRead(PADStatus* status) {
         if (SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) buttons |= PAD_TRIGGER_Z;
 
         /* L1 + D-pad Up/Down = camera zoom; otherwise pass D-pad to game */
-        if (l1_held && dpad_up) {
+        if (g_pc_settings.zoom_enabled && l1_held && dpad_up) {
             g_pc_zoom += PC_ZOOM_STEP;
             if (g_pc_zoom > PC_ZOOM_MAX) g_pc_zoom = PC_ZOOM_MAX;
-        } else if (l1_held && dpad_down) {
+        } else if (g_pc_settings.zoom_enabled && l1_held && dpad_down) {
             g_pc_zoom -= PC_ZOOM_STEP;
             if (g_pc_zoom < PC_ZOOM_MIN) g_pc_zoom = PC_ZOOM_MIN;
         } else {
@@ -228,3 +235,5 @@ void PADSetSpec(u32 spec) { (void)spec; }
 void PADSetAnalogMode(u32 mode) { (void)mode; }
 /* PADClamp compiled from decomp: src/static/dolphin/pad/Padclamp.c */
 BOOL PADGetType(s32 chan, u32* type) { if (type) *type = 0x09000000; return TRUE; }
+
+SDL_GameController* pc_pad_get_controller(void) { return g_controller; }

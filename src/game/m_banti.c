@@ -315,9 +315,9 @@ extern void banti_move(GAME_PLAY* play) {
     if (setjmp(banti_jmpbuf) != 0) {
         /* Crashed inside banti_move — disable permanently */
         banti_disabled = 1;
-        printf("[banti] CRASH at subpoint=%d addr=0x%08X — disabling clock overlay\n",
+        fprintf(stderr, "[banti] CRASH at subpoint=%d addr=0x%08X — disabling clock overlay\n",
                banti_subpoint, pc_crash_get_addr());
-        printf("[banti] play=%p pa=%p banti=%p\n",
+        fprintf(stderr, "[banti] play=%p pa=%p banti=%p\n",
                (void*)play,
                (void*)play->actor_info.list[ACTOR_PART_PLAYER].actor,
                (void*)&banti);

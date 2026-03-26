@@ -1,5 +1,9 @@
 static int mMsg_Check_ScrollOrder(mMsg_Window_c* msg_p) {
-  return (chkTrigger(BUTTON_A) || chkTrigger(BUTTON_B));
+  return (chkTrigger(BUTTON_A) || chkTrigger(BUTTON_B)
+#ifdef TARGET_PC
+    || chkButton(BUTTON_L) /* PC: hold L to auto-advance text */
+#endif
+  );
 }
 
 static int mMsg_MsgTimeEnd_dec(mMsg_Window_c* msg_p) {

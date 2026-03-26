@@ -1109,6 +1109,11 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
     msg_p->status_flags |= mMsg_STATUS_FLAG_FAST_TEXT;
   }
 
+#ifdef TARGET_PC
+  /* PC: hold L to reveal all text on the current page instantly */
+  int pc_turbo_text = chkButton(BUTTON_L);
+#endif
+
   if (mMsg_Check_CancelOrder(msg_p)) {
     msg_p->cancel_flag = TRUE;
   }
@@ -1116,6 +1121,11 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
   if (msg_p->cancel_flag  && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
     *cursor_timer = 0.0f;
   }
+#ifdef TARGET_PC
+  else if (pc_turbo_text && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
+    *cursor_timer = 0.0f;
+  }
+#endif
   else if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
     *cursor_timer = 0.0f;
   }
@@ -1172,7 +1182,13 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
       else {
         int cur_idx = idx;
 
-        if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) != 0 && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
+        if (
+#ifdef TARGET_PC
+          (pc_turbo_text || (msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) != 0)
+#else
+          (msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) != 0
+#endif
+          && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
           mMsg_sound_MessageSpeedClear(1);
           msg_p->status_flags &= ~mMsg_STATUS_FLAG_NOT_PAUSE_FRAME;
         }
@@ -1189,7 +1205,11 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
         processed = TRUE;
         msg_p->status_flags ^= mMsg_STATUS_FLAG_NOT_PAUSE_FRAME;
 
-        if  (msg_p->cancel_flag == FALSE) {
+        if  (msg_p->cancel_flag == FALSE
+#ifdef TARGET_PC
+          && !pc_turbo_text
+#endif
+        ) {
          utter = mMsg_sound_CodeVoice(msg_p, cur_idx);
           break;
         }

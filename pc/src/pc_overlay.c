@@ -1,28 +1,143 @@
-/* pc_overlay.c - FPS/speed counter overlay with embedded bitmap font */
+/* pc_overlay.c - FPS counter + in-game settings menu with embedded bitmap font */
 #include "pc_platform.h"
 #include "pc_overlay.h"
+#include "pc_settings.h"
 
 /* ---- Vertex type ---- */
 typedef struct { float x, y, u, v, r, g, b, a; } OvVtx;
-#define OV_MAX_VERTS 512
+#define OV_MAX_VERTS 3072
+static OvVtx ov_verts[OV_MAX_VERTS]; /* static to avoid 96KB on stack */
 
-/* ---- GL objects & state ---- */
-static int    ov_visible = 0;
+/* ---- GL objects ---- */
 static GLuint ov_prog = 0;
 static GLuint ov_vao = 0;
 static GLuint ov_vbo = 0;
 static GLuint ov_tex = 0;
 static GLint  ov_loc_font = -1;
 
-/* ---- Cached metrics (updated from pc_vi.c) ---- */
+/* ---- FPS state ---- */
 static double ov_fps   = 60.0;
 static double ov_speed = 100.0;
+
+/* ---- Menu state ---- */
+int g_pc_menu_open = 0;
+static int menu_cursor = 0;
+
+/* Input repeat: initial delay then fast repeat */
+static int rep_up = 0, rep_down = 0, rep_left = 0, rep_right = 0;
+#define REP_DELAY  16  /* frames before repeat starts */
+#define REP_RATE    3  /* frames between repeats */
+
+/* ---- Menu items ---- */
+enum {
+    MI_FPS_COUNTER,
+    MI_MASTER_VOLUME,
+    MI_BGM_VOLUME,
+    MI_SFX_VOLUME,
+    MI_VOICE_VOLUME,
+    MI_FULLSCREEN,
+    MI_VSYNC,
+    MI_MSAA,
+    MI_ZOOM_ENABLED,
+    MI_FRAMESKIP,
+    MI_FRAME_LIMIT,
+    MI_VERBOSE,
+    MI_COUNT
+};
+
+static const char* menu_labels[MI_COUNT] = {
+    "FPS Counter",
+    "Master Volume",
+    "Music",
+    "Sound Effects",
+    "Voices",
+    "Fullscreen",
+    "V-Sync",
+    "MSAA",
+    "Camera Zoom",
+    "Frameskip",
+    "Frame Limit",
+    "Verbose Log",
+};
+
+static void menu_get_value(int item, char* buf, int sz) {
+    switch (item) {
+    case MI_FPS_COUNTER:   snprintf(buf, sz, "%s", g_pc_settings.show_fps ? "ON" : "OFF"); break;
+    case MI_MASTER_VOLUME: snprintf(buf, sz, "%d%%", g_pc_settings.master_volume); break;
+    case MI_BGM_VOLUME:    snprintf(buf, sz, "%d%%", g_pc_settings.bgm_volume); break;
+    case MI_SFX_VOLUME:    snprintf(buf, sz, "%d%%", g_pc_settings.sfx_volume); break;
+    case MI_VOICE_VOLUME:  snprintf(buf, sz, "%d%%", g_pc_settings.voice_volume); break;
+    case MI_FULLSCREEN: {
+        const char* m[] = {"Windowed", "Fullscreen", "Borderless"};
+        snprintf(buf, sz, "%s", m[g_pc_settings.fullscreen]);
+        break;
+    }
+    case MI_VSYNC:         snprintf(buf, sz, "%s", g_pc_settings.vsync ? "ON" : "OFF"); break;
+    case MI_MSAA:
+        if (g_pc_settings.msaa == 0) snprintf(buf, sz, "Off");
+        else snprintf(buf, sz, "%dx", g_pc_settings.msaa);
+        break;
+    case MI_ZOOM_ENABLED:  snprintf(buf, sz, "%s", g_pc_settings.zoom_enabled ? "ON" : "OFF"); break;
+    case MI_FRAMESKIP:
+        if (g_pc_settings.frameskip == 0) snprintf(buf, sz, "Off");
+        else snprintf(buf, sz, "%d", g_pc_settings.frameskip);
+        break;
+    case MI_FRAME_LIMIT:   snprintf(buf, sz, "%s", g_pc_no_framelimit ? "OFF" : "ON"); break;
+    case MI_VERBOSE:       snprintf(buf, sz, "%s", g_pc_settings.verbose ? "ON" : "OFF"); break;
+    }
+}
+
+static void menu_adjust_vol(int* vol, int dir) {
+    int v = *vol + dir * 5;
+    if (v < 0) v = 0; if (v > 100) v = 100;
+    *vol = v;
+}
+
+static void menu_adjust(int item, int dir) {
+    switch (item) {
+    case MI_FPS_COUNTER:   g_pc_settings.show_fps ^= 1; break;
+    case MI_MASTER_VOLUME: menu_adjust_vol(&g_pc_settings.master_volume, dir); break;
+    case MI_BGM_VOLUME:    menu_adjust_vol(&g_pc_settings.bgm_volume, dir); break;
+    case MI_SFX_VOLUME:    menu_adjust_vol(&g_pc_settings.sfx_volume, dir); break;
+    case MI_VOICE_VOLUME:  menu_adjust_vol(&g_pc_settings.voice_volume, dir); break;
+    case MI_FULLSCREEN: {
+        int v = g_pc_settings.fullscreen + dir;
+        if (v < 0) v = 2; if (v > 2) v = 0;
+        g_pc_settings.fullscreen = v;
+        pc_settings_apply();
+        break;
+    }
+    case MI_VSYNC:
+        g_pc_settings.vsync ^= 1;
+        pc_settings_apply();
+        break;
+    case MI_MSAA: {
+        int vals[] = {0, 2, 4, 8};
+        int cur = 0;
+        for (int i = 0; i < 4; i++) if (vals[i] == g_pc_settings.msaa) cur = i;
+        cur += dir;
+        if (cur < 0) cur = 3; if (cur > 3) cur = 0;
+        g_pc_settings.msaa = vals[cur];
+        break; /* MSAA needs restart */
+    }
+    case MI_ZOOM_ENABLED:  g_pc_settings.zoom_enabled ^= 1; break;
+    case MI_FRAMESKIP: {
+        int v = g_pc_settings.frameskip + dir;
+        if (v < 0) v = 0; if (v > 4) v = 4;
+        g_pc_settings.frameskip = v;
+        break;
+    }
+    case MI_FRAME_LIMIT:   g_pc_no_framelimit ^= 1; break;
+    case MI_VERBOSE:       g_pc_settings.verbose ^= 1; break;
+    }
+}
 
 /* ---- Embedded shaders ---- */
 #ifdef PC_USE_GLES
 static const char* ov_vert_src =
     "#version 310 es\n"
     "precision mediump float;\n"
+    "precision highp int;\n"
     "layout(location=0) in vec2 a_pos;\n"
     "layout(location=1) in vec2 a_uv;\n"
     "layout(location=2) in vec4 a_col;\n"
@@ -31,6 +146,7 @@ static const char* ov_vert_src =
 static const char* ov_frag_src =
     "#version 310 es\n"
     "precision mediump float;\n"
+    "precision highp int;\n"
     "in vec2 v_uv; in vec4 v_col;\n"
     "uniform sampler2D u_font;\n"
     "out vec4 fragColor;\n"
@@ -161,60 +277,204 @@ static GLuint ov_compile_shader(GLenum type, const char* src) {
     if (!ok) {
         char log[256];
         glGetShaderInfoLog(s, sizeof(log), NULL, log);
-        printf("[OVERLAY] shader error: %s\n", log);
+        fprintf(stderr, "[OVERLAY] shader error: %s\n", log);
     }
     return s;
 }
 
 /* ---- Vertex helpers ---- */
-static void ov_push(OvVtx* v, int* n,
-                    float px, float py, float u, float vt,
+static int ov_nv; /* current vertex count */
+
+static void ov_push(float px, float py, float u, float vt,
                     float r, float g, float b, float a) {
-    if (*n >= OV_MAX_VERTS) return;
-    OvVtx* p = &v[*n];
+    if (ov_nv >= OV_MAX_VERTS) return;
+    OvVtx* p = &ov_verts[ov_nv++];
     p->x = px / (float)g_pc_window_w * 2.0f - 1.0f;
     p->y = 1.0f - py / (float)g_pc_window_h * 2.0f;
     p->u = u; p->v = vt;
     p->r = r; p->g = g; p->b = b; p->a = a;
-    (*n)++;
 }
 
-static void ov_quad(OvVtx* v, int* n,
-                    float x, float y, float w, float h,
+static void ov_quad(float x, float y, float w, float h,
                     float u0, float v0, float u1, float v1,
                     float r, float g, float b, float a) {
-    ov_push(v, n, x,     y,     u0, v0, r, g, b, a);
-    ov_push(v, n, x,     y + h, u0, v1, r, g, b, a);
-    ov_push(v, n, x + w, y,     u1, v0, r, g, b, a);
-    ov_push(v, n, x + w, y,     u1, v0, r, g, b, a);
-    ov_push(v, n, x,     y + h, u0, v1, r, g, b, a);
-    ov_push(v, n, x + w, y + h, u1, v1, r, g, b, a);
+    ov_push(x,     y,     u0, v0, r, g, b, a);
+    ov_push(x,     y + h, u0, v1, r, g, b, a);
+    ov_push(x + w, y,     u1, v0, r, g, b, a);
+    ov_push(x + w, y,     u1, v0, r, g, b, a);
+    ov_push(x,     y + h, u0, v1, r, g, b, a);
+    ov_push(x + w, y + h, u1, v1, r, g, b, a);
 }
 
-static void ov_char(OvVtx* v, int* n, int ch,
-                    float x, float y, float cw, float ch_h,
+/* Solid block UV (char 127 = all white) for backgrounds */
+#define BG_U ((15.0f + 0.5f) / 16.0f)
+#define BG_V ((5.0f + 0.5f) / 6.0f)
+
+static void ov_char(int ch, float x, float y, float cw, float ch_h,
                     float r, float g, float b, float a) {
     int idx = ch - 32;
     if (idx < 0 || idx > 95) idx = 0;
     float col = (float)(idx % 16);
     float row = (float)(idx / 16);
-    ov_quad(v, n, x, y, cw, ch_h,
+    ov_quad(x, y, cw, ch_h,
             col / 16.0f, row / 6.0f,
             (col + 1.0f) / 16.0f, (row + 1.0f) / 6.0f,
             r, g, b, a);
 }
 
-static void ov_string(OvVtx* v, int* n, const char* s,
-                      float x, float y, float cw, float ch,
+static void ov_string(const char* s, float x, float y, float cw, float ch,
                       float r, float g, float b, float a) {
     for (int i = 0; s[i]; i++)
-        ov_char(v, n, (unsigned char)s[i], x + i * cw, y, cw, ch, r, g, b, a);
+        ov_char((unsigned char)s[i], x + i * cw, y, cw, ch, r, g, b, a);
+}
+
+/* Right-aligned string ending at x_right */
+static void ov_string_right(const char* s, float x_right, float y, float cw, float ch,
+                            float r, float g, float b, float a) {
+    int len = (int)strlen(s);
+    ov_string(s, x_right - len * cw, y, cw, ch, r, g, b, a);
+}
+
+/* ---- Input repeat helper ---- */
+static int ov_repeat(int held, int* timer) {
+    if (!held) { *timer = 0; return 0; }
+    if (*timer == 0) { *timer = 1; return 1; } /* first press */
+    (*timer)++;
+    if (*timer == REP_DELAY) { return 1; }
+    if (*timer > REP_DELAY && ((*timer - REP_DELAY) % REP_RATE) == 0) { return 1; }
+    return 0;
+}
+
+/* ---- Menu input (called from draw, polls SDL state) ---- */
+static void menu_process_input(void) {
+    if (!g_pc_menu_open) return;
+
+    const Uint8* keys = SDL_GetKeyboardState(NULL);
+    int up = keys[SDL_SCANCODE_UP];
+    int down = keys[SDL_SCANCODE_DOWN];
+    int left = keys[SDL_SCANCODE_LEFT];
+    int right = keys[SDL_SCANCODE_RIGHT];
+
+    SDL_GameController* ctrl = pc_pad_get_controller();
+    if (ctrl) {
+        up    |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_UP);
+        down  |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+        left  |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+        right |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+    }
+
+    if (ov_repeat(up, &rep_up))     { menu_cursor--; if (menu_cursor < 0) menu_cursor = MI_COUNT - 1; }
+    if (ov_repeat(down, &rep_down)) { menu_cursor++; if (menu_cursor >= MI_COUNT) menu_cursor = 0; }
+    if (ov_repeat(left, &rep_left))  menu_adjust(menu_cursor, -1);
+    if (ov_repeat(right, &rep_right)) menu_adjust(menu_cursor, +1);
+}
+
+/* ---- Draw: FPS counter (top-right corner) ---- */
+static void draw_fps(float cw, float ch, float pad) {
+    char line1[32], line2[32];
+    snprintf(line1, sizeof(line1), "%.1f FPS", ov_fps);
+    snprintf(line2, sizeof(line2), "%d%% Speed", (int)(ov_speed + 0.5));
+
+    int len1 = (int)strlen(line1);
+    int len2 = (int)strlen(line2);
+    int max_len = len1 > len2 ? len1 : len2;
+
+    float pw = max_len * cw + 2.0f * pad;
+    float ph = 2.0f * ch + 3.0f * pad;
+    float px = (float)g_pc_window_w - pw - pad;
+    float py = pad;
+
+    ov_quad(px, py, pw, ph, BG_U, BG_V, BG_U, BG_V, 0, 0, 0, 0.65f);
+    ov_string(line1, px + pad, py + pad, cw, ch, 1, 1, 1, 1);
+    ov_string(line2, px + pad, py + pad + ch + pad, cw, ch, 0.8f, 0.8f, 0.8f, 1);
+}
+
+/* ---- Draw: Settings menu (centered) ---- */
+static void draw_menu(float cw, float ch, float pad) {
+    /* Layout constants */
+    int cols = 26;           /* total width in characters */
+    int val_col = 18;        /* column where values start */
+    int lines = MI_COUNT + 5; /* title + blank + items + blank + footer */
+
+    float mw = cols * cw + 2.0f * pad;
+    float mh = lines * (ch + pad) + pad;
+    float mx = ((float)g_pc_window_w - mw) * 0.5f;
+    float my = ((float)g_pc_window_h - mh) * 0.5f;
+
+    /* Background */
+    ov_quad(mx, my, mw, mh, BG_U, BG_V, BG_U, BG_V, 0, 0, 0, 0.80f);
+
+    float row_h = ch + pad;
+    float tx = mx + pad;
+    float ty = my + pad;
+
+    /* Title */
+    float title_x = mx + (mw - 8.0f * cw) * 0.5f; /* center "SETTINGS" */
+    ov_string("SETTINGS", title_x, ty, cw, ch, 1, 1, 1, 1);
+    ty += row_h * 2; /* title + blank */
+
+    /* Menu items */
+    for (int i = 0; i < MI_COUNT; i++) {
+        float r, g, b;
+        if (i == menu_cursor) { r = 1.0f; g = 1.0f; b = 0.3f; } /* yellow */
+        else                  { r = 0.75f; g = 0.75f; b = 0.75f; } /* gray */
+
+        /* Cursor indicator */
+        if (i == menu_cursor) {
+            ov_string(">", tx, ty, cw, ch, r, g, b, 1);
+        }
+
+        /* Label */
+        ov_string(menu_labels[i], tx + 2 * cw, ty, cw, ch, r, g, b, 1);
+
+        /* Value (right-aligned in value column) */
+        char val[16];
+        menu_get_value(i, val, sizeof(val));
+        float vr = 1, vg = 1, vb = 1;
+        if (i == menu_cursor) { vr = 1; vg = 1; vb = 0.5f; }
+        ov_string_right(val, tx + cols * cw, ty, cw, ch, vr, vg, vb, 1);
+
+        /* Volume bar for volume items */
+        {
+            int vol_val = -1;
+            if (i == MI_MASTER_VOLUME) vol_val = g_pc_settings.master_volume;
+            else if (i == MI_BGM_VOLUME)  vol_val = g_pc_settings.bgm_volume;
+            else if (i == MI_SFX_VOLUME)  vol_val = g_pc_settings.sfx_volume;
+            else if (i == MI_VOICE_VOLUME) vol_val = g_pc_settings.voice_volume;
+            if (vol_val >= 0) {
+                float bar_x = tx + (val_col - 1) * cw;
+                float bar_w = (cols - val_col - 5) * cw;
+                float bar_h = ch * 0.3f;
+                float bar_y = ty + ch * 0.35f;
+                float fill = (float)vol_val / 100.0f;
+                ov_quad(bar_x, bar_y, bar_w, bar_h, BG_U, BG_V, BG_U, BG_V, 0.3f, 0.3f, 0.3f, 1);
+                if (fill > 0)
+                    ov_quad(bar_x, bar_y, bar_w * fill, bar_h, BG_U, BG_V, BG_U, BG_V,
+                            i == menu_cursor ? 1.0f : 0.6f,
+                            i == menu_cursor ? 1.0f : 0.6f,
+                            i == menu_cursor ? 0.3f : 0.6f, 1);
+            }
+        }
+
+        ty += row_h;
+    }
+
+    /* Footer */
+    ty += pad;
+    ov_string("D-Pad:Nav  L/R:Adjust", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
+    ty += row_h;
+    ov_string("Select/Tab:Close+Save", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
 }
 
 /* ---- Public API ---- */
 
 void pc_overlay_init(void) {
-    /* Compile & link shader */
+    /* Save GL state that we'll disturb — pc_gx keeps its VAO/VBO bound at all times */
+    GLint prev_vao, prev_vbo, prev_tex;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prev_vao);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &prev_vbo);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_tex);
+
     GLuint vs = ov_compile_shader(GL_VERTEX_SHADER, ov_vert_src);
     GLuint fs = ov_compile_shader(GL_FRAGMENT_SHADER, ov_frag_src);
     ov_prog = glCreateProgram();
@@ -229,11 +489,11 @@ void pc_overlay_init(void) {
     if (!ok) {
         char log[256];
         glGetProgramInfoLog(ov_prog, sizeof(log), NULL, log);
-        printf("[OVERLAY] link error: %s\n", log);
+        fprintf(stderr, "[OVERLAY] link error: %s\n", log);
     }
     ov_loc_font = glGetUniformLocation(ov_prog, "u_font");
 
-    /* Create font texture: 128x48 R8, 16x6 grid of 8x8 chars */
+    /* Font texture: 128x48 R8, 16x6 grid of 8x8 chars */
     unsigned char pixels[128 * 48];
     memset(pixels, 0, sizeof(pixels));
     for (int i = 0; i < 96; i++) {
@@ -255,22 +515,23 @@ void pc_overlay_init(void) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    /* Create VAO/VBO */
+    /* VAO/VBO */
     glGenVertexArrays(1, &ov_vao);
     glGenBuffers(1, &ov_vbo);
     glBindVertexArray(ov_vao);
     glBindBuffer(GL_ARRAY_BUFFER, ov_vbo);
     glBufferData(GL_ARRAY_BUFFER, OV_MAX_VERTS * sizeof(OvVtx), NULL, GL_STREAM_DRAW);
-    /* loc 0: vec2 pos */
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(OvVtx), (void*)0);
-    /* loc 1: vec2 uv */
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(OvVtx), (void*)(2 * sizeof(float)));
-    /* loc 2: vec4 color */
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(OvVtx), (void*)(4 * sizeof(float)));
-    glBindVertexArray(0);
+
+    /* Restore previous GL state */
+    glBindVertexArray(prev_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, prev_vbo);
+    glBindTexture(GL_TEXTURE_2D, prev_tex);
 }
 
 void pc_overlay_shutdown(void) {
@@ -280,21 +541,37 @@ void pc_overlay_shutdown(void) {
     if (ov_prog) { glDeleteProgram(ov_prog);            ov_prog = 0; }
 }
 
-void pc_overlay_toggle(void) { ov_visible ^= 1; }
-int  pc_overlay_is_visible(void) { return ov_visible; }
-
 void pc_overlay_update(double fps, double speed) {
     ov_fps = fps;
     ov_speed = speed;
 }
 
+void pc_overlay_menu_toggle(void) {
+    g_pc_menu_open ^= 1;
+    if (!g_pc_menu_open) {
+        /* Save settings on close */
+        pc_settings_save();
+    }
+    /* Reset repeat timers */
+    rep_up = rep_down = rep_left = rep_right = 0;
+}
+
 void pc_overlay_draw(void) {
-    if (!ov_visible || !ov_prog) return;
+    if (!ov_prog) return;
+
+    /* Nothing to draw? */
+    int want_fps = g_pc_settings.show_fps && !g_pc_menu_open;
+    if (!want_fps && !g_pc_menu_open) return;
+
+    /* Process menu input */
+    if (g_pc_menu_open) menu_process_input();
 
     /* ---- Save GL state ---- */
-    GLint sv_prog, sv_vao, sv_tex, sv_vp[4], sv_bsrc, sv_bdst;
+    GLint sv_prog, sv_vao, sv_vbo, sv_tex, sv_active_tex, sv_vp[4], sv_bsrc, sv_bdst;
     glGetIntegerv(GL_CURRENT_PROGRAM, &sv_prog);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &sv_vao);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &sv_vbo);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &sv_active_tex);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &sv_tex);
     glGetIntegerv(GL_VIEWPORT, sv_vp);
     glGetIntegerv(GL_BLEND_SRC_RGB, &sv_bsrc);
@@ -303,7 +580,7 @@ void pc_overlay_draw(void) {
     GLboolean sv_depth   = glIsEnabled(GL_DEPTH_TEST);
     GLboolean sv_scissor = glIsEnabled(GL_SCISSOR_TEST);
 
-    /* ---- Set overlay state ---- */
+    /* ---- Set overlay GL state ---- */
     glUseProgram(ov_prog);
     glBindVertexArray(ov_vao);
     glActiveTexture(GL_TEXTURE0);
@@ -315,7 +592,7 @@ void pc_overlay_draw(void) {
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, g_pc_window_w, g_pc_window_h);
 
-    /* ---- Layout ---- */
+    /* ---- Build vertices ---- */
     int scale = g_pc_window_h / 240;
     if (scale < 1) scale = 1;
     if (scale > 6) scale = 6;
@@ -323,48 +600,26 @@ void pc_overlay_draw(void) {
     float ch  = 8.0f * scale;
     float pad = 4.0f * scale;
 
-    char line1[32], line2[32];
-    snprintf(line1, sizeof(line1), "%.1f FPS", ov_fps);
-    snprintf(line2, sizeof(line2), "%d%% Speed", (int)(ov_speed + 0.5));
+    ov_nv = 0;
 
-    int len1 = (int)strlen(line1);
-    int len2 = (int)strlen(line2);
-    int max_len = len1 > len2 ? len1 : len2;
-
-    float pw = max_len * cw + 2.0f * pad;
-    float ph = 2.0f * ch + 3.0f * pad;
-    float px = (float)g_pc_window_w - pw - pad;
-    float py = pad;
-
-    /* ---- Build vertices ---- */
-    OvVtx verts[OV_MAX_VERTS];
-    int nv = 0;
-
-    /* Background panel (solid block char 127 -> all-white UV region) */
-    float su = (15.0f + 0.5f) / 16.0f;
-    float sv_uv = (5.0f + 0.5f) / 6.0f;
-    ov_quad(verts, &nv, px, py, pw, ph,
-            su, sv_uv, su, sv_uv,
-            0.0f, 0.0f, 0.0f, 0.65f);
-
-    /* Line 1: FPS (white) */
-    ov_string(verts, &nv, line1,
-              px + pad, py + pad, cw, ch,
-              1.0f, 1.0f, 1.0f, 1.0f);
-
-    /* Line 2: Speed (slightly dimmer) */
-    ov_string(verts, &nv, line2,
-              px + pad, py + pad + ch + pad, cw, ch,
-              0.8f, 0.8f, 0.8f, 1.0f);
+    if (g_pc_menu_open) {
+        draw_menu(cw, ch, pad);
+    } else if (want_fps) {
+        draw_fps(cw, ch, pad);
+    }
 
     /* ---- Upload & draw ---- */
-    glBindBuffer(GL_ARRAY_BUFFER, ov_vbo);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)(nv * sizeof(OvVtx)), verts);
-    glDrawArrays(GL_TRIANGLES, 0, nv);
+    if (ov_nv > 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, ov_vbo);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)(ov_nv * sizeof(OvVtx)), ov_verts);
+        glDrawArrays(GL_TRIANGLES, 0, ov_nv);
+    }
 
     /* ---- Restore GL state ---- */
     glUseProgram(sv_prog);
     glBindVertexArray(sv_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, sv_vbo);
+    glActiveTexture(sv_active_tex);
     glBindTexture(GL_TEXTURE_2D, sv_tex);
     glViewport(sv_vp[0], sv_vp[1], sv_vp[2], sv_vp[3]);
     glBlendFunc(sv_bsrc, sv_bdst);

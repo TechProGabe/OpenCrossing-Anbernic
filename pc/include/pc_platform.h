@@ -106,6 +106,10 @@ extern float g_pc_zoom;  /* 1.0 = default, >1.0 = zoomed out, <1.0 = zoomed in *
 #define PC_ZOOM_MAX  2.0f
 #define PC_ZOOM_STEP 0.02f
 
+/* --- Settings menu --- */
+extern int g_pc_menu_open;  /* 1 = settings menu is open, suppress game input */
+SDL_GameController* pc_pad_get_controller(void);
+
 /* --- Functions --- */
 void pc_platform_init(void);
 void pc_platform_shutdown(void);

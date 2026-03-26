@@ -1546,7 +1546,11 @@ void Sou_BGMVolMove() {
                     volume = 0.f;
                 }
                 sou_bgm1_vol_now = volume;
+#ifdef TARGET_PC
+                NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(BGM0_GROUP, volume * pc_bgm_volume_scale);
+#else
                 NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(BGM0_GROUP, volume);
+#endif
             } break;
             case BGM1_GROUP: {
                 if (sou_bgm_vol_move_counter == 0) {
@@ -1575,7 +1579,11 @@ void Sou_BGMVolMove() {
                     volume = 0.f;
                 }
                 sou_bgm2_vol_now = volume;
+#ifdef TARGET_PC
+                NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(BGM1_GROUP, volume * pc_bgm_volume_scale);
+#else
                 NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(BGM1_GROUP, volume);
+#endif
             } break;
         }
     }
@@ -3532,6 +3540,18 @@ extern void Na_MDPlayerPos(u16 angle, f32 distance, u16 b, u16 c, u32 id) {
     }
 }
 
+#ifdef TARGET_PC
+/* PC per-category volume scales (0.0 - 1.0), set from pc_audio.c each frame */
+float pc_bgm_volume_scale  = 1.0f;
+float pc_se_volume_scale   = 1.0f;
+float pc_voice_volume_scale = 1.0f;
+
+void Na_PC_ApplyVolumes(void) {
+    NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(SE_GROUP,    1.15f * pc_se_volume_scale);
+    NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(VOICE_GROUP, pc_voice_volume_scale);
+}
+#endif
+
 extern void Na_BGMVolume(f32 volumeScale, u16 timer) {
     if (volumeScale > 1.f) {
         volumeScale = 1.f;
@@ -3543,8 +3563,13 @@ extern void Na_BGMVolume(f32 volumeScale, u16 timer) {
         timer = 0x7fff;
     }
     if (timer == 0) {
+#ifdef TARGET_PC
+        NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(1, volumeScale * pc_bgm_volume_scale);
+        NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(3, volumeScale * pc_bgm_volume_scale);
+#else
         NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(1, volumeScale);
         NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(3, volumeScale);
+#endif
         sou_bgm1_vol_now = volumeScale;
         sou_bgm2_vol_now = volumeScale;
         sou_bgm_vol_move_time = 0;

@@ -9,6 +9,7 @@
  * so OS preemption of the game thread doesn't cause audio dropouts.
  */
 #include "pc_platform.h"
+#include "pc_settings.h"
 #include "jaudio_NES/audiothread.h"
 
 #define PC_AUDIO_SAMPLE_RATE 32000
@@ -58,6 +59,17 @@ void pc_audio_start_producer_thread(void) {
     }
 }
 
+/* --- Per-category volume (called from game thread before Na_GameFrame) --- */
+void pc_audio_update_volumes(void) {
+    extern float pc_bgm_volume_scale, pc_se_volume_scale, pc_voice_volume_scale;
+    extern void Na_PC_ApplyVolumes(void);
+
+    pc_bgm_volume_scale  = (float)g_pc_settings.bgm_volume  / 100.0f;
+    pc_se_volume_scale   = (float)g_pc_settings.sfx_volume   / 100.0f;
+    pc_voice_volume_scale = (float)g_pc_settings.voice_volume / 100.0f;
+    Na_PC_ApplyVolumes();
+}
+
 /* --- SDL audio callback (runs on SDL's audio device thread) --- */
 static void pc_audio_callback(void* userdata, Uint8* stream, int len) {
     s16* out = (s16*)stream;
@@ -79,8 +91,10 @@ static void pc_audio_callback(void* userdata, Uint8* stream, int len) {
     int copy = (avail < total_samples) ? avail : total_samples;
     copy &= ~1;
 
+    int mv = g_pc_settings.master_volume; /* 0-100 */
     for (int i = 0; i < copy; i++) {
-        out[i] = ring_buffer[(rp + i) & RING_BUF_MASK] >> 1;
+        s32 sample = (s32)ring_buffer[(rp + i) & RING_BUF_MASK] >> 1;
+        out[i] = (s16)(sample * mv / 100);
     }
     if (copy < total_samples) {
         memset(&out[copy], 0, (total_samples - copy) * sizeof(s16));

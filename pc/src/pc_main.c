@@ -188,9 +188,10 @@ void pc_platform_init(void) {
 
     SDL_GL_SetSwapInterval(g_pc_settings.vsync);
 
-    printf("[PC] GL Renderer: %s\n", glGetString(GL_RENDERER));
-    printf("[PC] GL Version:  %s\n", glGetString(GL_VERSION));
-    printf("[PC] GL Vendor:   %s\n", glGetString(GL_VENDOR));
+    /* Always print GPU info to stderr so it shows regardless of verbose mode */
+    fprintf(stderr, "[PC] GL Renderer: %s\n", glGetString(GL_RENDERER));
+    fprintf(stderr, "[PC] GL Version:  %s\n", glGetString(GL_VERSION));
+    fprintf(stderr, "[PC] GL Vendor:   %s\n", glGetString(GL_VENDOR));
 
     pc_platform_update_window_size();
 
@@ -289,7 +290,7 @@ int pc_platform_poll_events(void) {
                     printf("[PC] Frame limiter %s\n", g_pc_no_framelimit ? "OFF" : "ON");
                 }
                 if (event.key.keysym.sym == SDLK_TAB && !event.key.repeat) {
-                    pc_overlay_toggle();
+                    pc_overlay_menu_toggle();
                 }
                 pc_typing_handle_event(&event);
                 break;
@@ -298,7 +299,7 @@ int pc_platform_poll_events(void) {
                 break;
             case SDL_CONTROLLERBUTTONDOWN:
                 if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-                    pc_overlay_toggle();
+                    pc_overlay_menu_toggle();
                 }
                 break;
         }
@@ -380,14 +381,15 @@ int main(int argc, char* argv[]) {
     /* Merge verbose: CLI --verbose or settings.ini verbose=1 */
     if (g_pc_settings.verbose) g_pc_verbose = 1;
 
-    /* Redirect stdout/stderr based on verbose mode.
-     * Non-verbose: log to file (not /dev/null) so startup info is always captured.
-     * Verbose: keep console output, unbuffered for real-time diagnostics.
-     * Terminal writes are extremely slow on Windows and tank FPS, so
-     * non-verbose redirects even stdout to the log file. */
+    /* Non-verbose: discard stdout (/dev/null) to save CPU on low-power ARM.
+     * Essential info (GPU, crashes) uses stderr and always shows in terminal.
+     * Verbose: keep stdout alive + unbuffered for real-time diagnostics. */
     if (!g_pc_verbose) {
-        freopen("AnimalCrossing.log", "w", stdout);
-        freopen("AnimalCrossing.log", "a", stderr);
+#ifdef _WIN32
+        freopen("NUL", "w", stdout);
+#else
+        freopen("/dev/null", "w", stdout);
+#endif
     } else {
         setvbuf(stdout, NULL, _IONBF, 0);
         setvbuf(stderr, NULL, _IONBF, 0);

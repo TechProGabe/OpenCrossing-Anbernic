@@ -42,7 +42,7 @@ static GLuint compile_shader(GLenum type, const char* source) {
 #ifdef PC_USE_GLES
     const char* version_line = "#version 310 es\n";
     const char* precision_line = (type == GL_FRAGMENT_SHADER)
-        ? "precision mediump float;\nprecision mediump int;\n"
+        ? "precision mediump float;\nprecision highp int;\n"
         : "precision highp float;\nprecision highp int;\n";
     const char* past_version = source;
     if (strncmp(source, "#version", 8) == 0) {

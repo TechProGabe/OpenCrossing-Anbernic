@@ -11,6 +11,12 @@ PCSettings g_pc_settings = {
     .preload_textures = 0,
     .frameskip = 0,
     .verbose = 0,
+    .show_fps = 0,
+    .master_volume = 100,
+    .bgm_volume = 100,
+    .sfx_volume = 100,
+    .voice_volume = 100,
+    .zoom_enabled = 1,
 };
 
 static const char* SETTINGS_FILE = "settings.ini";
@@ -38,8 +44,22 @@ static const char* DEFAULT_SETTINGS =
     "# Frameskip: 0 = off, 1 = skip every other frame, 2 = skip 2 of 3, etc.\n"
     "frameskip = 0\n"
     "\n"
+    "[Audio]\n"
+    "# Volume levels: 0-100\n"
+    "master_volume = 100\n"
+    "bgm_volume = 100\n"
+    "sfx_volume = 100\n"
+    "voice_volume = 100\n"
+    "\n"
+    "[Gameplay]\n"
+    "# Show FPS counter: 0 = off, 1 = on\n"
+    "show_fps = 0\n"
+    "\n"
+    "# Camera zoom (L + D-pad): 0 = off, 1 = on\n"
+    "zoom_enabled = 1\n"
+    "\n"
     "[Debug]\n"
-    "# Verbose logging: 0 = off (log to AnimalCrossing.log), 1 = on (log to console)\n"
+    "# Verbose logging: 0 = off, 1 = on (log to console)\n"
     "verbose = 0\n";
 
 static const char* skip_ws(const char* s) {
@@ -75,6 +95,18 @@ static void apply_setting(const char* key, const char* value) {
         if (val >= 0 && val <= 4) g_pc_settings.frameskip = val;
     } else if (strcmp(key, "verbose") == 0) {
         if (val == 0 || val == 1) g_pc_settings.verbose = val;
+    } else if (strcmp(key, "show_fps") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.show_fps = val;
+    } else if (strcmp(key, "master_volume") == 0) {
+        if (val >= 0 && val <= 100) g_pc_settings.master_volume = val;
+    } else if (strcmp(key, "bgm_volume") == 0) {
+        if (val >= 0 && val <= 100) g_pc_settings.bgm_volume = val;
+    } else if (strcmp(key, "sfx_volume") == 0) {
+        if (val >= 0 && val <= 100) g_pc_settings.sfx_volume = val;
+    } else if (strcmp(key, "voice_volume") == 0) {
+        if (val >= 0 && val <= 100) g_pc_settings.voice_volume = val;
+    } else if (strcmp(key, "zoom_enabled") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.zoom_enabled = val;
     }
 }
 
@@ -114,8 +146,17 @@ void pc_settings_save(void) {
     fprintf(f, "# Frameskip: 0 = off, 1 = skip every other frame, 2 = skip 2 of 3, etc.\n");
     fprintf(f, "frameskip = %d\n", g_pc_settings.frameskip);
     fprintf(f, "\n");
+    fprintf(f, "[Audio]\n");
+    fprintf(f, "master_volume = %d\n", g_pc_settings.master_volume);
+    fprintf(f, "bgm_volume = %d\n", g_pc_settings.bgm_volume);
+    fprintf(f, "sfx_volume = %d\n", g_pc_settings.sfx_volume);
+    fprintf(f, "voice_volume = %d\n", g_pc_settings.voice_volume);
+    fprintf(f, "\n");
+    fprintf(f, "[Gameplay]\n");
+    fprintf(f, "show_fps = %d\n", g_pc_settings.show_fps);
+    fprintf(f, "zoom_enabled = %d\n", g_pc_settings.zoom_enabled);
+    fprintf(f, "\n");
     fprintf(f, "[Debug]\n");
-    fprintf(f, "# Verbose logging: 0 = off (log to AnimalCrossing.log), 1 = on (log to console)\n");
     fprintf(f, "verbose = %d\n", g_pc_settings.verbose);
     fclose(f);
     printf("[Settings] Saved %s\n", SETTINGS_FILE);

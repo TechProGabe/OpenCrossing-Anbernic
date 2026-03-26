@@ -78,16 +78,25 @@ void VIWaitForRetrace(void) {
     /* Snapshot GL timing before reporting */
     pc_gx_frame_timing_snapshot();
 
-    /* report slow frames (>20ms = missed 60fps by >4ms) */
-    if (frame_ms > 20.0 && g_pc_verbose) {
-        double swap_ms = (double)(t_after_swap - t_before_swap) * 1000.0 / (double)perf_freq;
-        double pace_ms = (double)(t_after_pace - t_before_pace) * 1000.0 / (double)perf_freq;
-        double work_ms = (double)(vi_enter - frame_start_time) * 1000.0 / (double)perf_freq;
-        double flush_ms = (double)pc_gx_flush_time_us / 1000.0;
-        double texld_ms = (double)pc_gx_texload_time_us / 1000.0;
-        printf("[STUTTER] frame %u: total=%.1fms work=%.1fms swap=%.1fms pace=%.1fms gl=%.1fms tex=%.1fms draws=%d\n",
-               pc_frame_counter, frame_ms, work_ms, swap_ms, pace_ms,
-               flush_ms, texld_ms, pc_gx_draw_call_count);
+    /* Adaptive stutter detection: only log frames significantly above the
+     * running average.  A fixed 20ms threshold spams constantly on slower
+     * hardware that normally runs at ~22ms/frame. */
+    {
+        static double avg_frame_ms = 16.67;
+        if (frame_ms > 0.0)
+            avg_frame_ms = avg_frame_ms * 0.95 + frame_ms * 0.05;
+        double stutter_thresh = avg_frame_ms * 1.5;
+        if (stutter_thresh < 20.0) stutter_thresh = 20.0;
+        if (frame_ms > stutter_thresh && g_pc_verbose) {
+            double swap_ms = (double)(t_after_swap - t_before_swap) * 1000.0 / (double)perf_freq;
+            double pace_ms = (double)(t_after_pace - t_before_pace) * 1000.0 / (double)perf_freq;
+            double work_ms = (double)(vi_enter - frame_start_time) * 1000.0 / (double)perf_freq;
+            double flush_ms = (double)pc_gx_flush_time_us / 1000.0;
+            double texld_ms = (double)pc_gx_texload_time_us / 1000.0;
+            printf("[STUTTER] frame %u: total=%.1fms (avg=%.1fms) work=%.1fms swap=%.1fms pace=%.1fms gl=%.1fms tex=%.1fms draws=%d\n",
+                   pc_frame_counter, frame_ms, avg_frame_ms, work_ms, swap_ms, pace_ms,
+                   flush_ms, texld_ms, pc_gx_draw_call_count);
+        }
     }
 
     {

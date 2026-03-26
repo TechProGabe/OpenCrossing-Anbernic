@@ -43,6 +43,12 @@ extern void Na_RhythmPos(u32 index, u8 unused, u16 angle, f32 distance);
 extern void Na_SpecChange(int);
 extern void Na_MDPlayerPos(u16 angle, f32 distance, u16 b, u16 c, u32 id);
 extern void Na_BGMVolume(f32 volumeScale, u16 b);
+#ifdef TARGET_PC
+extern float pc_bgm_volume_scale;
+extern float pc_se_volume_scale;
+extern float pc_voice_volume_scale;
+extern void Na_PC_ApplyVolumes(void);
+#endif
 extern void Na_RestartPrepare();
 extern u8 Na_CheckRestartReady();
 extern void Na_Restart();
