@@ -52,6 +52,44 @@ static struct {
 static int s_efb_capture_count = 0;
 static GLuint s_efb_copy_fbo = 0; /* persistent FBO for GPU-side EFB copy */
 
+/* --- Render-to-texture FBO for render scale / resolution override ---
+ * When g_pc_render_w < g_pc_window_w (or height), the game renders into this
+ * FBO at the lower resolution, then pc_gx_blit_to_screen() upscales it to the
+ * full window before the SDL buffer swap. */
+static GLuint s_render_fbo = 0;
+static GLuint s_render_tex = 0;
+static GLuint s_render_rbo = 0;
+static int    s_fbo_w = 0;
+static int    s_fbo_h = 0;
+
+static void pc_gx_ensure_render_fbo(int w, int h) {
+    if (s_render_fbo && s_fbo_w == w && s_fbo_h == h) return;
+    /* Delete old resources */
+    if (s_render_fbo) { glDeleteFramebuffers(1, &s_render_fbo);  s_render_fbo = 0; }
+    if (s_render_tex) { glDeleteTextures(1, &s_render_tex);      s_render_tex = 0; }
+    if (s_render_rbo) { glDeleteRenderbuffers(1, &s_render_rbo); s_render_rbo = 0; }
+    /* Create new FBO */
+    glGenFramebuffers(1, &s_render_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, s_render_fbo);
+    glGenTextures(1, &s_render_tex);
+    glBindTexture(GL_TEXTURE_2D, s_render_tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_render_tex, 0);
+    glGenRenderbuffers(1, &s_render_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, s_render_rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, s_render_rbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    s_fbo_w = w;
+    s_fbo_h = h;
+    fprintf(stderr, "[GX] Render FBO: %dx%d\n", w, h);
+}
+
 void pc_gx_efb_capture_store(u32 dest_ptr, GLuint gl_tex) {
     for (int i = 0; i < s_efb_capture_count; i++) {
         if (s_efb_captures[i].dest_ptr == dest_ptr) {
@@ -294,7 +332,15 @@ void pc_gx_begin_frame(void) {
 #ifdef PC_ENHANCEMENTS
     pc_gx_update_aspect();
     glDisable(GL_SCISSOR_TEST);
-    glViewport(0, 0, g_pc_window_w, g_pc_window_h);
+    glViewport(0, 0, g_pc_render_w, g_pc_render_h);
+    /* Bind render FBO when game renders at sub-window resolution */
+    if (g_pc_render_w < g_pc_window_w || g_pc_render_h < g_pc_window_h) {
+        pc_gx_ensure_render_fbo(g_pc_render_w, g_pc_render_h);
+        glBindFramebuffer(GL_FRAMEBUFFER, s_render_fbo);
+    } else {
+        /* Full-res: render directly to default framebuffer, release any old FBO */
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 #endif
 #ifdef PC_USE_GLES
     glClearDepthf(g_gx.clear_depth);
@@ -311,11 +357,55 @@ void pc_gx_shutdown(void) {
 #ifdef PC_ENHANCEMENTS
     pc_gx_efb_capture_cleanup();
     if (s_efb_copy_fbo) { glDeleteFramebuffers(1, &s_efb_copy_fbo); s_efb_copy_fbo = 0; }
+    if (s_render_fbo) { glDeleteFramebuffers(1, &s_render_fbo); s_render_fbo = 0; }
+    if (s_render_tex) { glDeleteTextures(1, &s_render_tex);     s_render_tex = 0; }
+    if (s_render_rbo) { glDeleteRenderbuffers(1, &s_render_rbo); s_render_rbo = 0; }
 #endif
 
     if (g_gx.ebo) glDeleteBuffers(1, &g_gx.ebo);
     if (g_gx.vbo) glDeleteBuffers(1, &g_gx.vbo);
     if (g_gx.vao) glDeleteVertexArrays(1, &g_gx.vao);
+}
+
+void pc_gx_blit_to_screen(void) {
+#ifdef PC_ENHANCEMENTS
+    if (!s_render_fbo) return;  /* rendering directly to default FB, nothing to do */
+
+    /* Bind default framebuffer as draw target */
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+    /* Clear to black so letterbox regions are black */
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    /* Compute destination rectangle */
+    int dst_x, dst_y, dst_w, dst_h;
+    if (g_pc_scale_mode == 1) {
+        /* Center: preserve pixel size, pad with black bars */
+        dst_w = s_fbo_w;
+        dst_h = s_fbo_h;
+        dst_x = (g_pc_window_w - dst_w) / 2;
+        dst_y = (g_pc_window_h - dst_h) / 2;
+        if (dst_x < 0) dst_x = 0;
+        if (dst_y < 0) dst_y = 0;
+    } else {
+        /* Stretch: fill entire window */
+        dst_x = 0; dst_y = 0;
+        dst_w = g_pc_window_w;
+        dst_h = g_pc_window_h;
+    }
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, s_render_fbo);
+    glBlitFramebuffer(
+        0, 0, s_fbo_w, s_fbo_h,
+        dst_x, dst_y, dst_x + dst_w, dst_y + dst_h,
+        GL_COLOR_BUFFER_BIT, GL_LINEAR);
+
+    /* Leave default framebuffer bound for overlay draw */
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#endif
 }
 
 /* --- Vertex Submission --- */
@@ -1037,8 +1127,8 @@ void GXSetViewport(f32 left, f32 top, f32 wd, f32 ht, f32 nearz, f32 farz) {
     if (g_pc_frameskip_active) return;
 #ifdef PC_ENHANCEMENTS
     {
-        float sx = (float)g_pc_window_w / (float)PC_GC_WIDTH;
-        float sy = (float)g_pc_window_h / (float)PC_GC_HEIGHT;
+        float sx = (float)g_pc_render_w / (float)PC_GC_WIDTH;
+        float sy = (float)g_pc_render_h / (float)PC_GC_HEIGHT;
         float adj_left = left;
         float adj_wd = wd;
 
@@ -1056,7 +1146,7 @@ void GXSetViewport(f32 left, f32 top, f32 wd, f32 ht, f32 nearz, f32 farz) {
         int gl_x = (int)(adj_left * sx);
         int gl_w = (int)(adj_wd * sx);
         int gl_h = (int)(ht * sy);
-        int gl_y = g_pc_window_h - (int)(top * sy) - gl_h;
+        int gl_y = g_pc_render_h - (int)(top * sy) - gl_h;
         glViewport(gl_x, gl_y, gl_w, gl_h);
     }
 #else
@@ -1083,12 +1173,12 @@ void GXSetScissor(u32 left, u32 top, u32 wd, u32 ht) {
     glEnable(GL_SCISSOR_TEST);
 #ifdef PC_ENHANCEMENTS
     {
-        float sx = (float)g_pc_window_w / (float)PC_GC_WIDTH;
-        float sy = (float)g_pc_window_h / (float)PC_GC_HEIGHT;
+        float sx = (float)g_pc_render_w / (float)PC_GC_WIDTH;
+        float sy = (float)g_pc_render_h / (float)PC_GC_HEIGHT;
         int gl_x = (int)(left * sx);
         int gl_w = (int)(wd * sx);
         int gl_h = (int)(ht * sy);
-        int gl_y = g_pc_window_h - (int)(top * sy) - gl_h;
+        int gl_y = g_pc_render_h - (int)(top * sy) - gl_h;
         glScissor(gl_x, gl_y, gl_w, gl_h);
     }
 #else
@@ -1651,9 +1741,9 @@ static void pc_gx_copy_tex_execute(void* dest, GXBool clear) {
     if (out_wd > 4096 || out_ht > 4096) return;
 
 #ifdef PC_ENHANCEMENTS
-    /* Scale readback coordinates from GC coords to window resolution */
-    float sx = (float)g_pc_window_w / (float)PC_GC_WIDTH;
-    float sy = (float)g_pc_window_h / (float)PC_GC_HEIGHT;
+    /* Scale readback coordinates from GC coords to render resolution */
+    float sx = (float)g_pc_render_w / (float)PC_GC_WIDTH;
+    float sy = (float)g_pc_render_h / (float)PC_GC_HEIGHT;
     int read_left = (int)(g_gx.tex_copy_src[0] * sx);
     int read_top  = (int)(g_gx.tex_copy_src[1] * sy);
     int read_wd   = (int)(out_wd * sx);
@@ -1667,11 +1757,11 @@ static void pc_gx_copy_tex_execute(void* dest, GXBool clear) {
 
     if (read_left < 0) { read_wd += read_left; read_left = 0; }
     if (read_top < 0)  { read_ht += read_top;  read_top = 0; }
-    if (read_left + read_wd > g_pc_window_w) read_wd = g_pc_window_w - read_left;
-    if (read_top + read_ht > g_pc_window_h)  read_ht = g_pc_window_h - read_top;
+    if (read_left + read_wd > g_pc_render_w) read_wd = g_pc_render_w - read_left;
+    if (read_top + read_ht > g_pc_render_h)  read_ht = g_pc_render_h - read_top;
     if (read_wd <= 0 || read_ht <= 0) return;
 
-    int gl_y = g_pc_window_h - (read_top + read_ht);
+    int gl_y = g_pc_render_h - (read_top + read_ht);
     if (gl_y < 0) return;
 
 #ifdef PC_ENHANCEMENTS
