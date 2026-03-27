@@ -17,6 +17,10 @@ PCSettings g_pc_settings = {
     .sfx_volume = 100,
     .voice_volume = 100,
     .zoom_enabled = 1,
+    .fps_target    = 0,    /* 60fps default */
+    .render_scale  = 100,
+    .window_size   = 2,    /* 640x480 default */
+    .scale_mode    = 0,
 };
 
 static const char* SETTINGS_FILE = "settings.ini";
@@ -41,8 +45,17 @@ static const char* DEFAULT_SETTINGS =
     "preload_textures = 0\n"
     "\n"
     "[Performance]\n"
-    "# Frameskip: 0 = off, 1 = skip every other frame, 2 = skip 2 of 3, etc.\n"
-    "frameskip = 0\n"
+    "# FPS target: 0=60fps, 1=50fps, 2=40fps, 3=30fps, 4=20fps, 5=unlimited, 6=auto\n"
+    "fps_target = 0\n"
+    "\n"
+    "# Render scale %%: 100=native, 75, 50, 25 (lower = faster on limited hardware)\n"
+    "render_scale = 100\n"
+    "\n"
+    "# Window size preset: 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=custom\n"
+    "window_size = 2\n"
+    "\n"
+    "# Scale mode: 0=stretch to fill screen, 1=center (letterbox)\n"
+    "scale_mode = 0\n"
     "\n"
     "[Audio]\n"
     "# Volume levels: 0-100\n"
@@ -79,9 +92,9 @@ static void apply_setting(const char* key, const char* value) {
     int val = atoi(value);
 
     if (strcmp(key, "window_width") == 0) {
-        if (val >= 640) g_pc_settings.window_width = val;
+        if (val >= 320) g_pc_settings.window_width = val;
     } else if (strcmp(key, "window_height") == 0) {
-        if (val >= 480) g_pc_settings.window_height = val;
+        if (val >= 240) g_pc_settings.window_height = val;
     } else if (strcmp(key, "fullscreen") == 0) {
         if (val >= 0 && val <= 2) g_pc_settings.fullscreen = val;
     } else if (strcmp(key, "vsync") == 0) {
@@ -92,7 +105,19 @@ static void apply_setting(const char* key, const char* value) {
     } else if (strcmp(key, "preload_textures") == 0) {
         if (val >= 0 && val <= 2) g_pc_settings.preload_textures = val;
     } else if (strcmp(key, "frameskip") == 0) {
-        if (val >= 0 && val <= 4) g_pc_settings.frameskip = val;
+        /* Legacy: map old frameskip values to fps_target */
+        if (val >= 1 && g_pc_settings.fps_target == 0)
+            g_pc_settings.fps_target = 3; /* 30fps */
+        g_pc_settings.frameskip = val;
+    } else if (strcmp(key, "fps_target") == 0) {
+        if (val >= 0 && val <= 6) g_pc_settings.fps_target = val;
+    } else if (strcmp(key, "render_scale") == 0) {
+        if (val == 25 || val == 50 || val == 75 || val == 100)
+            g_pc_settings.render_scale = val;
+    } else if (strcmp(key, "window_size") == 0) {
+        if (val >= 0 && val <= 5) g_pc_settings.window_size = val;
+    } else if (strcmp(key, "scale_mode") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.scale_mode = val;
     } else if (strcmp(key, "verbose") == 0) {
         if (val == 0 || val == 1) g_pc_settings.verbose = val;
     } else if (strcmp(key, "show_fps") == 0) {
@@ -143,8 +168,17 @@ void pc_settings_save(void) {
     fprintf(f, "preload_textures = %d\n", g_pc_settings.preload_textures);
     fprintf(f, "\n");
     fprintf(f, "[Performance]\n");
-    fprintf(f, "# Frameskip: 0 = off, 1 = skip every other frame, 2 = skip 2 of 3, etc.\n");
-    fprintf(f, "frameskip = %d\n", g_pc_settings.frameskip);
+    fprintf(f, "# FPS target: 0=60fps, 1=50fps, 2=40fps, 3=30fps, 4=20fps, 5=unlimited, 6=auto\n");
+    fprintf(f, "fps_target = %d\n", g_pc_settings.fps_target);
+    fprintf(f, "\n");
+    fprintf(f, "# Render scale %%: 100=native, 75, 50, 25\n");
+    fprintf(f, "render_scale = %d\n", g_pc_settings.render_scale);
+    fprintf(f, "\n");
+    fprintf(f, "# Window size preset: 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=custom\n");
+    fprintf(f, "window_size = %d\n", g_pc_settings.window_size);
+    fprintf(f, "\n");
+    fprintf(f, "# Scale mode: 0=stretch to fill screen, 1=center (letterbox)\n");
+    fprintf(f, "scale_mode = %d\n", g_pc_settings.scale_mode);
     fprintf(f, "\n");
     fprintf(f, "[Audio]\n");
     fprintf(f, "master_volume = %d\n", g_pc_settings.master_volume);
@@ -162,12 +196,28 @@ void pc_settings_save(void) {
     printf("[Settings] Saved %s\n", SETTINGS_FILE);
 }
 
+/* Window size preset table: {width, height} */
+static const int s_window_presets[5][2] = {
+    {320, 240},
+    {480, 360},
+    {640, 480},
+    {960, 720},
+    {1280, 960},
+};
+
+/* FPS target enum -> actual Hz */
+static const int s_fps_target_hz[7] = {60, 50, 40, 30, 20, 0, 60}; /* 6=auto starts at 60 */
+
 void pc_settings_apply(void) {
     if (!g_pc_window) return;
 
-    if (g_pc_settings.fullscreen == 1) {
-        SDL_SetWindowFullscreen(g_pc_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-    } else if (g_pc_settings.fullscreen == 2) {
+    /* Resolve window size from preset (unless custom) */
+    if (g_pc_settings.window_size >= 0 && g_pc_settings.window_size < 5) {
+        g_pc_settings.window_width  = s_window_presets[g_pc_settings.window_size][0];
+        g_pc_settings.window_height = s_window_presets[g_pc_settings.window_size][1];
+    }
+
+    if (g_pc_settings.fullscreen == 1 || g_pc_settings.fullscreen == 2) {
         SDL_SetWindowFullscreen(g_pc_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     } else {
         SDL_SetWindowFullscreen(g_pc_window, 0);
@@ -176,11 +226,19 @@ void pc_settings_apply(void) {
     }
 
     SDL_GL_SetSwapInterval(g_pc_settings.vsync);
-    pc_platform_update_window_size();
 
-    printf("[Settings] Applied: %dx%d fullscreen=%d vsync=%d msaa=%d\n",
+    /* Apply fps_target to the global used by the frame pacing system */
+    int ti = g_pc_settings.fps_target;
+    if (ti < 0 || ti > 6) ti = 0;
+    g_pc_fps_target = s_fps_target_hz[ti];
+
+    pc_platform_update_window_size(); /* also updates g_pc_render_w/h */
+
+    printf("[Settings] Applied: %dx%d (render %dx%d) fullscreen=%d vsync=%d msaa=%d fps_target=%d\n",
            g_pc_settings.window_width, g_pc_settings.window_height,
-           g_pc_settings.fullscreen, g_pc_settings.vsync, g_pc_settings.msaa);
+           g_pc_render_w, g_pc_render_h,
+           g_pc_settings.fullscreen, g_pc_settings.vsync, g_pc_settings.msaa,
+           g_pc_fps_target);
 }
 
 void pc_settings_load(void) {
@@ -211,8 +269,18 @@ void pc_settings_load(void) {
         }
     }
     fclose(f);
-    printf("[Settings] Loaded %s: %dx%d fullscreen=%d vsync=%d msaa=%d preload_textures=%d frameskip=%d\n",
+    /* Apply fps_target to global immediately (window not open yet at load time,
+     * but g_pc_fps_target must be set before the game loop starts) */
+    {
+        int ti = g_pc_settings.fps_target;
+        if (ti < 0 || ti > 6) ti = 0;
+        extern int g_pc_fps_target;
+        const int fps_hz[7] = {60, 50, 40, 30, 20, 0, 60};
+        g_pc_fps_target = fps_hz[ti];
+    }
+    printf("[Settings] Loaded %s: %dx%d fullscreen=%d vsync=%d msaa=%d preload=%d fps_target=%d render_scale=%d\n",
            SETTINGS_FILE, g_pc_settings.window_width, g_pc_settings.window_height,
            g_pc_settings.fullscreen, g_pc_settings.vsync, g_pc_settings.msaa,
-           g_pc_settings.preload_textures, g_pc_settings.frameskip);
+           g_pc_settings.preload_textures, g_pc_settings.fps_target,
+           g_pc_settings.render_scale);
 }

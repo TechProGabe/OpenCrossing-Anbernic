@@ -259,6 +259,14 @@ static void graph_main(GRAPH* this, GAME* game) {
     game_main(game);
     GRAPH_SET_DOING_POINT(this, GAME_MAIN_FINISHED);
     if (ResetStatus < IRQ_RESET_DELAY) {
+#ifdef TARGET_PC
+        if (g_pc_frameskip_active) {
+            /* Logic-only tick: skip all rendering but do event pump + frame counter */
+            extern void VIWaitForRetrace(void);
+            VIWaitForRetrace();
+            this->frame_counter++;
+        } else
+#endif
         if (game->disable_display == FALSE) {
             int draw_err = graph_draw_finish(this);
             PC_DIAG(5, "graph_main: draw_finish=%d ResetStatus=%d\n", draw_err, ResetStatus);
@@ -301,6 +309,13 @@ static void graph_main(GRAPH* this, GAME* game) {
     PC_DIAG(10, "graph_main: game_main returned, frame_counter=%d\n", this->frame_counter);
     GRAPH_SET_DOING_POINT(this, GAME_MAIN_FINISHED);
     if (ResetStatus < IRQ_RESET_DELAY) {
+#ifdef TARGET_PC
+        if (g_pc_frameskip_active) {
+            extern void VIWaitForRetrace(void);
+            VIWaitForRetrace();
+            this->frame_counter++;
+        } else
+#endif
         if (skip_frame < GETREG(SREG, 3)) {
             skip_frame++;
             this->frame_counter++;
@@ -359,6 +374,10 @@ extern void graph_proc(void* arg) {
     }
 #endif
     graph_ct(&graph_class);
+#ifdef TARGET_PC
+    double tick_accumulator = 0.0;
+    extern int g_pc_fps_target;
+#endif
 
     while (dlftbl != NULL) {
         size_t size = dlftbl->alloc_size;
@@ -370,15 +389,40 @@ extern void graph_proc(void* arg) {
         emu64_refresh();
         GRAPH_SET_DOING_POINT(__graph, GAME_CT_FINISHED);
 
-        while (game_is_doing(game)
+        while (game_is_doing(game) && g_pc_running) {
 #ifdef TARGET_PC
-               && g_pc_running
-#endif
-        ) {
+            /* Tick batching: run N logic ticks per visual frame for FPS targets < 60.
+             * g_pc_frameskip_active=1 ticks skip all GL work and frame pacing. */
+            {
+                double ticks_per_visual;
+                int ticks, t;
+                switch (g_pc_fps_target) {
+                    case 20: ticks_per_visual = 3.0; break;
+                    case 30: ticks_per_visual = 2.0; break;
+                    case 40: ticks_per_visual = 1.5; break;
+                    case 50: ticks_per_visual = 1.2; break;
+                    default: ticks_per_visual = 1.0; break;
+                }
+                tick_accumulator += ticks_per_visual;
+                ticks = (int)tick_accumulator;
+                tick_accumulator -= (double)ticks;
+                if (ticks < 1) ticks = 1;
+                for (t = 0; t < ticks; t++) {
+                    g_pc_frameskip_active = (t < ticks - 1) ? 1 : 0;
+                    PC_DIAG(10, "graph_proc: tick %d/%d frameskip=%d\n", t+1, ticks, g_pc_frameskip_active);
+                    if (!dvderr_draw()) {
+                        graph_main(__graph, game);
+                    }
+                    if (!game_is_doing(game) || !g_pc_running) break;
+                }
+                g_pc_frameskip_active = 0;
+            }
+#else
             PC_DIAG(10, "graph_proc: loop top, game=%p\n", (void*)game);
             if (!dvderr_draw()) {
                 graph_main(__graph, game);
             }
+#endif
         }
 
         dlftbl = game_get_next_game_dlftbl(game);

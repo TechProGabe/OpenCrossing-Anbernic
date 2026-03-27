@@ -28,6 +28,10 @@ int           g_pc_window_h = PC_SCREEN_HEIGHT;
 int           g_pc_widescreen_stretch = 0;
 int           g_pc_frameskip_active = 0;
 float         g_pc_zoom = 1.0f;
+int           g_pc_fps_target = 60;
+int           g_pc_render_w = PC_SCREEN_WIDTH;
+int           g_pc_render_h = PC_SCREEN_HEIGHT;
+int           g_pc_scale_mode = 0;
 
 /* exe image range -- used by seg2k0 to distinguish pointers from segment addresses */
 unsigned int pc_image_base = 0;
@@ -120,18 +124,33 @@ unsigned int pc_crash_get_addr(void) {
 void pc_platform_init(void) {
 #ifdef _WIN32
     SetProcessDPIAware();
-
 #endif
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0) {
-        fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
-        exit(1);
+
+    /* Log environment before init to help debug display issues */
+    fprintf(stderr, "[PC] Platform init begin\n");
+    {
+        const char* vd = SDL_getenv("SDL_VIDEODRIVER");
+        const char* da = SDL_getenv("DISPLAY");
+        const char* wa = SDL_getenv("WAYLAND_DISPLAY");
+        fprintf(stderr, "[PC] SDL_VIDEODRIVER=%s  DISPLAY=%s  WAYLAND_DISPLAY=%s\n",
+                vd ? vd : "(not set)",
+                da ? da : "(not set)",
+                wa ? wa : "(not set)");
     }
 
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0) {
+        fprintf(stderr, "[PC] SDL_Init failed: %s\n", SDL_GetError());
+        exit(1);
+    }
+    fprintf(stderr, "[PC] SDL video driver: %s\n", SDL_GetCurrentVideoDriver());
+
 #ifdef PC_USE_GLES
+    fprintf(stderr, "[PC] GL profile: GLES 3.1\n");
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 #else
+    fprintf(stderr, "[PC] GL profile: Core 3.3\n");
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -142,32 +161,103 @@ void pc_platform_init(void) {
     if (g_pc_settings.msaa > 0) {
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, g_pc_settings.msaa);
+        fprintf(stderr, "[PC] MSAA: %dx\n", g_pc_settings.msaa);
     }
 #endif
 
+    /* Window creation with fallback chain.
+     *
+     * KMS/DRM devices (handhelds running muOS, ArkOS, JELOS, etc.) use the
+     * SDL2 KMSDRM backend which cannot create windowed GBM/EGL surfaces —
+     * only fullscreen is supported. Additionally, SDL_WINDOW_FULLSCREEN
+     * (mode-change) is often rejected; SDL_WINDOW_FULLSCREEN_DESKTOP
+     * (borderless, native resolution) is the correct flag on these devices.
+     *
+     * Fallback order:
+     *   1. Requested mode (honors settings.ini fullscreen value)
+     *   2. FULLSCREEN_DESKTOP (if mode-change fullscreen failed)
+     *   3. FULLSCREEN_DESKTOP at native display size (ignore saved w/h)
+     *   4. Windowed (last resort for desktop/debug)
+     */
     {
-        Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
-        int win_w = g_pc_settings.window_width;
-        int win_h = g_pc_settings.window_height;
-        if (g_pc_settings.fullscreen == 1) {
-            flags |= SDL_WINDOW_FULLSCREEN;
-        } else if (g_pc_settings.fullscreen == 2) {
-            flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+        const int win_w = g_pc_settings.window_width;
+        const int win_h = g_pc_settings.window_height;
+        const char* vdrv = SDL_GetCurrentVideoDriver();
+        int is_kmsdrm = (vdrv && (strncmp(vdrv, "KMSDRM", 6) == 0 ||
+                                   strncmp(vdrv, "kmsdrm", 6) == 0));
+
+        Uint32 base_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
+
+        /* Attempt 1: requested settings */
+        {
+            Uint32 flags = base_flags;
+            if (g_pc_settings.fullscreen == 1) {
+                /* On KMSDRM, skip mode-change fullscreen and go straight to desktop */
+                flags |= is_kmsdrm ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN;
+            } else if (g_pc_settings.fullscreen == 2) {
+                flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+            } else {
+                flags |= SDL_WINDOW_RESIZABLE;
+            }
+            fprintf(stderr, "[PC] SDL_CreateWindow attempt 1: %dx%d flags=0x%x kmsdrm=%d\n",
+                    win_w, win_h, flags, is_kmsdrm);
+            g_pc_window = SDL_CreateWindow(PC_WINDOW_TITLE,
+                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                win_w, win_h, flags);
         }
-        g_pc_window = SDL_CreateWindow(
-            PC_WINDOW_TITLE,
-            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-            win_w, win_h, flags
-        );
+
+        /* Attempt 2: FULLSCREEN_DESKTOP if mode-change failed */
+        if (!g_pc_window && g_pc_settings.fullscreen == 1) {
+            fprintf(stderr, "[PC] Attempt 1 failed (%s), retrying with FULLSCREEN_DESKTOP\n",
+                    SDL_GetError());
+            Uint32 flags = base_flags | SDL_WINDOW_FULLSCREEN_DESKTOP;
+            g_pc_window = SDL_CreateWindow(PC_WINDOW_TITLE,
+                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                win_w, win_h, flags);
+        }
+
+        /* Attempt 3: FULLSCREEN_DESKTOP at display's native resolution */
+        if (!g_pc_window && g_pc_settings.fullscreen) {
+            fprintf(stderr, "[PC] Attempt 2 failed (%s), retrying fullscreen at display native res\n",
+                    SDL_GetError());
+            SDL_DisplayMode dm;
+            int nat_w = 640, nat_h = 480;
+            if (SDL_GetCurrentDisplayMode(0, &dm) == 0) {
+                nat_w = dm.w; nat_h = dm.h;
+            }
+            fprintf(stderr, "[PC] Display native: %dx%d\n", nat_w, nat_h);
+            Uint32 flags = base_flags | SDL_WINDOW_FULLSCREEN_DESKTOP;
+            g_pc_window = SDL_CreateWindow(PC_WINDOW_TITLE,
+                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                nat_w, nat_h, flags);
+        }
+
+        /* Attempt 4: windowed fallback */
+        if (!g_pc_window) {
+            fprintf(stderr, "[PC] Attempt 3 failed (%s), retrying windowed 640x480\n",
+                    SDL_GetError());
+            Uint32 flags = base_flags | SDL_WINDOW_RESIZABLE;
+            g_pc_window = SDL_CreateWindow(PC_WINDOW_TITLE,
+                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                640, 480, flags);
+        }
     }
+
     if (!g_pc_window) {
-        fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
+        fprintf(stderr, "[PC] All SDL_CreateWindow attempts failed: %s\n", SDL_GetError());
         SDL_Quit();
         exit(1);
     }
+    {
+        int fw, fh;
+        SDL_GetWindowSize(g_pc_window, &fw, &fh);
+        fprintf(stderr, "[PC] Window created: %dx%d flags=0x%x\n",
+                fw, fh, SDL_GetWindowFlags(g_pc_window));
+    }
+
     g_pc_gl_context = SDL_GL_CreateContext(g_pc_window);
     if (!g_pc_gl_context) {
-        fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+        fprintf(stderr, "[PC] SDL_GL_CreateContext failed: %s\n", SDL_GetError());
         SDL_DestroyWindow(g_pc_window);
         SDL_Quit();
         exit(1);
@@ -175,10 +265,10 @@ void pc_platform_init(void) {
 
 #ifdef PC_USE_GLES
     if (!gladLoadGLES2((GLADloadfunc)SDL_GL_GetProcAddress)) {
-        fprintf(stderr, "gladLoadGLES2 failed\n");
+        fprintf(stderr, "[PC] gladLoadGLES2 failed\n");
 #else
     if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress)) {
-        fprintf(stderr, "gladLoadGL failed\n");
+        fprintf(stderr, "[PC] gladLoadGL failed\n");
 #endif
         SDL_GL_DeleteContext(g_pc_gl_context);
         SDL_DestroyWindow(g_pc_window);
@@ -188,10 +278,10 @@ void pc_platform_init(void) {
 
     SDL_GL_SetSwapInterval(g_pc_settings.vsync);
 
-    /* Always print GPU info to stderr so it shows regardless of verbose mode */
     fprintf(stderr, "[PC] GL Renderer: %s\n", glGetString(GL_RENDERER));
     fprintf(stderr, "[PC] GL Version:  %s\n", glGetString(GL_VERSION));
     fprintf(stderr, "[PC] GL Vendor:   %s\n", glGetString(GL_VENDOR));
+    fprintf(stderr, "[PC] GL SL Ver:   %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
     pc_platform_update_window_size();
 
@@ -238,6 +328,34 @@ void pc_platform_update_window_size(void) {
     SDL_GL_GetDrawableSize(g_pc_window, &g_pc_window_w, &g_pc_window_h);
     if (g_pc_window_w <= 0) g_pc_window_w = PC_SCREEN_WIDTH;
     if (g_pc_window_h <= 0) g_pc_window_h = PC_SCREEN_HEIGHT;
+
+    /* In fullscreen mode the SDL window is always native-res, so use the window_size
+     * preset as the target render resolution instead of the full drawable size.
+     * In windowed mode the drawable size IS the window size, so use it directly. */
+    int base_w, base_h;
+    if ((g_pc_settings.fullscreen == 1 || g_pc_settings.fullscreen == 2)
+        && g_pc_settings.window_size >= 0 && g_pc_settings.window_size < 5) {
+        static const int presets[5][2] = {
+            {320, 240}, {480, 360}, {640, 480}, {960, 720}, {1280, 960},
+        };
+        base_w = presets[g_pc_settings.window_size][0];
+        base_h = presets[g_pc_settings.window_size][1];
+        /* Don't exceed actual display size */
+        if (base_w > g_pc_window_w) base_w = g_pc_window_w;
+        if (base_h > g_pc_window_h) base_h = g_pc_window_h;
+    } else {
+        base_w = g_pc_window_w;
+        base_h = g_pc_window_h;
+    }
+
+    int scale = g_pc_settings.render_scale;
+    if (scale <= 0 || scale > 100) scale = 100;
+    g_pc_render_w = base_w * scale / 100;
+    g_pc_render_h = base_h * scale / 100;
+    if (g_pc_render_w < 1) g_pc_render_w = 1;
+    if (g_pc_render_h < 1) g_pc_render_h = 1;
+
+    g_pc_scale_mode = g_pc_settings.scale_mode;
 }
 
 void pc_platform_swap_buffers(void) {

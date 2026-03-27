@@ -39,8 +39,10 @@ enum {
     MI_VSYNC,
     MI_MSAA,
     MI_ZOOM_ENABLED,
-    MI_FRAMESKIP,
-    MI_FRAME_LIMIT,
+    MI_FPS_TARGET,
+    MI_RENDER_SCALE,
+    MI_WINDOW_SIZE,
+    MI_SCALE_MODE,
     MI_VERBOSE,
     MI_COUNT
 };
@@ -55,10 +57,54 @@ static const char* menu_labels[MI_COUNT] = {
     "V-Sync",
     "MSAA",
     "Camera Zoom",
-    "Frameskip",
-    "Frame Limit",
+    "FPS Target",
+    "Render Scale",
+    "Render Res",
+    "Scale Mode",
     "Verbose Log",
 };
+
+/* ---- Menu tabs ---- */
+enum { TAB_VIDEO, TAB_AUDIO, TAB_DEBUG, TAB_COUNT };
+static const char* tab_labels[TAB_COUNT] = { "VIDEO", "AUDIO", "DEBUG" };
+static int s_active_tab = 0;
+
+/* Which tab each menu item belongs to (indexed by MI_*) */
+static const int menu_item_tab[MI_COUNT] = {
+    /* MI_FPS_COUNTER  */ TAB_DEBUG,
+    /* MI_MASTER_VOLUME*/ TAB_AUDIO,
+    /* MI_BGM_VOLUME   */ TAB_AUDIO,
+    /* MI_SFX_VOLUME   */ TAB_AUDIO,
+    /* MI_VOICE_VOLUME */ TAB_AUDIO,
+    /* MI_FULLSCREEN   */ TAB_VIDEO,
+    /* MI_VSYNC        */ TAB_VIDEO,
+    /* MI_MSAA         */ TAB_VIDEO,
+    /* MI_ZOOM_ENABLED */ TAB_VIDEO,
+    /* MI_FPS_TARGET   */ TAB_VIDEO,
+    /* MI_RENDER_SCALE */ TAB_VIDEO,
+    /* MI_WINDOW_SIZE  */ TAB_VIDEO,
+    /* MI_SCALE_MODE   */ TAB_VIDEO,
+    /* MI_VERBOSE      */ TAB_DEBUG,
+};
+
+/* Returns index of nth visible item in the active tab, or -1 if out of range.
+ * Also used to count visible items: count = tab_item_count(). */
+static int tab_item_at(int n) {
+    int found = 0;
+    for (int i = 0; i < MI_COUNT; i++) {
+        if (menu_item_tab[i] == s_active_tab) {
+            if (found == n) return i;
+            found++;
+        }
+    }
+    return -1;
+}
+static int tab_item_count(void) {
+    int count = 0;
+    for (int i = 0; i < MI_COUNT; i++)
+        if (menu_item_tab[i] == s_active_tab) count++;
+    return count;
+}
 
 static void menu_get_value(int item, char* buf, int sz) {
     switch (item) {
@@ -78,11 +124,26 @@ static void menu_get_value(int item, char* buf, int sz) {
         else snprintf(buf, sz, "%dx", g_pc_settings.msaa);
         break;
     case MI_ZOOM_ENABLED:  snprintf(buf, sz, "%s", g_pc_settings.zoom_enabled ? "ON" : "OFF"); break;
-    case MI_FRAMESKIP:
-        if (g_pc_settings.frameskip == 0) snprintf(buf, sz, "Off");
-        else snprintf(buf, sz, "%d", g_pc_settings.frameskip);
+    case MI_FPS_TARGET: {
+        static const char* names[] = {"60 FPS", "50 FPS", "40 FPS", "30 FPS", "20 FPS", "Unlimited", "Auto"};
+        int t = g_pc_settings.fps_target;
+        if (t < 0 || t > 6) t = 0;
+        snprintf(buf, sz, "%s", names[t]);
         break;
-    case MI_FRAME_LIMIT:   snprintf(buf, sz, "%s", g_pc_no_framelimit ? "OFF" : "ON"); break;
+    }
+    case MI_RENDER_SCALE:
+        snprintf(buf, sz, "%d%%", g_pc_settings.render_scale);
+        break;
+    case MI_WINDOW_SIZE: {
+        static const char* wsnames[] = {"320x240", "480x360", "640x480", "960x720", "1280x960", "Custom"};
+        int w = g_pc_settings.window_size;
+        if (w < 0 || w > 5) w = 2;
+        snprintf(buf, sz, "%s", wsnames[w]);
+        break;
+    }
+    case MI_SCALE_MODE:
+        snprintf(buf, sz, "%s", g_pc_settings.scale_mode == 1 ? "Center" : "Stretch");
+        break;
     case MI_VERBOSE:       snprintf(buf, sz, "%s", g_pc_settings.verbose ? "ON" : "OFF"); break;
     }
 }
@@ -121,13 +182,38 @@ static void menu_adjust(int item, int dir) {
         break; /* MSAA needs restart */
     }
     case MI_ZOOM_ENABLED:  g_pc_settings.zoom_enabled ^= 1; break;
-    case MI_FRAMESKIP: {
-        int v = g_pc_settings.frameskip + dir;
-        if (v < 0) v = 0; if (v > 4) v = 4;
-        g_pc_settings.frameskip = v;
+    case MI_FPS_TARGET: {
+        /* Right = faster (lower index), Left = slower (higher index) */
+        int v = g_pc_settings.fps_target - dir;
+        if (v < 0) v = 6; if (v > 6) v = 0;
+        g_pc_settings.fps_target = v;
+        static const int fps_hz[7] = {60, 50, 40, 30, 20, 0, 60};
+        g_pc_fps_target = fps_hz[v];
+        if (v == 5) g_pc_no_framelimit = 1;
+        else        g_pc_no_framelimit = 0;
         break;
     }
-    case MI_FRAME_LIMIT:   g_pc_no_framelimit ^= 1; break;
+    case MI_RENDER_SCALE: {
+        static const int scales[] = {25, 50, 75, 100};
+        int cur = 3; /* default to 100% */
+        for (int i = 0; i < 4; i++) if (scales[i] == g_pc_settings.render_scale) { cur = i; break; }
+        cur += dir;
+        if (cur < 0) cur = 3; if (cur > 3) cur = 0;
+        g_pc_settings.render_scale = scales[cur];
+        pc_settings_apply();
+        break;
+    }
+    case MI_WINDOW_SIZE: {
+        int v = g_pc_settings.window_size + dir;
+        if (v < 0) v = 4; if (v > 4) v = 0; /* skip Custom (5) from menu cycling */
+        g_pc_settings.window_size = v;
+        pc_settings_apply();
+        break;
+    }
+    case MI_SCALE_MODE:
+        g_pc_settings.scale_mode ^= 1;
+        g_pc_scale_mode = g_pc_settings.scale_mode;
+        break;
     case MI_VERBOSE:       g_pc_settings.verbose ^= 1; break;
     }
 }
@@ -350,10 +436,12 @@ static void menu_process_input(void) {
     if (!g_pc_menu_open) return;
 
     const Uint8* keys = SDL_GetKeyboardState(NULL);
-    int up = keys[SDL_SCANCODE_UP];
-    int down = keys[SDL_SCANCODE_DOWN];
-    int left = keys[SDL_SCANCODE_LEFT];
+    int up    = keys[SDL_SCANCODE_UP];
+    int down  = keys[SDL_SCANCODE_DOWN];
+    int left  = keys[SDL_SCANCODE_LEFT];
     int right = keys[SDL_SCANCODE_RIGHT];
+    int tab_l = keys[SDL_SCANCODE_Q] || keys[SDL_SCANCODE_PAGEUP];
+    int tab_r = keys[SDL_SCANCODE_E] || keys[SDL_SCANCODE_PAGEDOWN];
 
     SDL_GameController* ctrl = pc_pad_get_controller();
     if (ctrl) {
@@ -361,18 +449,41 @@ static void menu_process_input(void) {
         down  |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
         left  |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
         right |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+        tab_l |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+        tab_r |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
     }
 
-    if (ov_repeat(up, &rep_up))     { menu_cursor--; if (menu_cursor < 0) menu_cursor = MI_COUNT - 1; }
-    if (ov_repeat(down, &rep_down)) { menu_cursor++; if (menu_cursor >= MI_COUNT) menu_cursor = 0; }
-    if (ov_repeat(left, &rep_left))  menu_adjust(menu_cursor, -1);
-    if (ov_repeat(right, &rep_right)) menu_adjust(menu_cursor, +1);
+    /* Tab switching */
+    static int rep_tabl = 0, rep_tabr = 0;
+    if (ov_repeat(tab_l, &rep_tabl)) {
+        s_active_tab--;
+        if (s_active_tab < 0) s_active_tab = TAB_COUNT - 1;
+        menu_cursor = 0;
+    }
+    if (ov_repeat(tab_r, &rep_tabr)) {
+        s_active_tab++;
+        if (s_active_tab >= TAB_COUNT) s_active_tab = 0;
+        menu_cursor = 0;
+    }
+
+    int count = tab_item_count();
+    if (ov_repeat(up,    &rep_up))    { menu_cursor--; if (menu_cursor < 0) menu_cursor = count - 1; }
+    if (ov_repeat(down,  &rep_down))  { menu_cursor++; if (menu_cursor >= count) menu_cursor = 0; }
+
+    int mi = tab_item_at(menu_cursor);
+    if (mi >= 0) {
+        if (ov_repeat(left,  &rep_left))  menu_adjust(mi, -1);
+        if (ov_repeat(right, &rep_right)) menu_adjust(mi, +1);
+    }
 }
 
 /* ---- Draw: FPS counter (top-right corner) ---- */
 static void draw_fps(float cw, float ch, float pad) {
     char line1[32], line2[32];
-    snprintf(line1, sizeof(line1), "%.1f FPS", ov_fps);
+    if (g_pc_fps_target > 0)
+        snprintf(line1, sizeof(line1), "%.1f/%d FPS", ov_fps, g_pc_fps_target);
+    else
+        snprintf(line1, sizeof(line1), "%.1f FPS", ov_fps);
     snprintf(line2, sizeof(line2), "%d%% Speed", (int)(ov_speed + 0.5));
 
     int len1 = (int)strlen(line1);
@@ -391,10 +502,11 @@ static void draw_fps(float cw, float ch, float pad) {
 
 /* ---- Draw: Settings menu (centered) ---- */
 static void draw_menu(float cw, float ch, float pad) {
-    /* Layout constants */
-    int cols = 26;           /* total width in characters */
-    int val_col = 18;        /* column where values start */
-    int lines = MI_COUNT + 5; /* title + blank + items + blank + footer */
+    int tab_count = tab_item_count();
+    int cols = 28;
+    int val_col = 18;
+    /* Title row + tab bar row + blank + items + blank + 2 footer rows */
+    int lines = 1 + 1 + 1 + tab_count + 1 + 2;
 
     float mw = cols * cw + 2.0f * pad;
     float mh = lines * (ch + pad) + pad;
@@ -409,37 +521,58 @@ static void draw_menu(float cw, float ch, float pad) {
     float ty = my + pad;
 
     /* Title */
-    float title_x = mx + (mw - 8.0f * cw) * 0.5f; /* center "SETTINGS" */
+    float title_x = mx + (mw - 8.0f * cw) * 0.5f;
     ov_string("SETTINGS", title_x, ty, cw, ch, 1, 1, 1, 1);
-    ty += row_h * 2; /* title + blank */
+    ty += row_h;
 
-    /* Menu items */
-    for (int i = 0; i < MI_COUNT; i++) {
-        float r, g, b;
-        if (i == menu_cursor) { r = 1.0f; g = 1.0f; b = 0.3f; } /* yellow */
-        else                  { r = 0.75f; g = 0.75f; b = 0.75f; } /* gray */
-
-        /* Cursor indicator */
-        if (i == menu_cursor) {
-            ov_string(">", tx, ty, cw, ch, r, g, b, 1);
+    /* Tab bar — draw all tabs, highlight active one */
+    {
+        /* Distribute tab labels evenly across cols chars */
+        int tab_col_w = cols / TAB_COUNT;
+        for (int t = 0; t < TAB_COUNT; t++) {
+            float tab_x = tx + t * tab_col_w * cw;
+            const char* lbl = tab_labels[t];
+            int lbl_len = (int)strlen(lbl);
+            float lbl_x = tab_x + ((tab_col_w - lbl_len) / 2) * cw;
+            if (t == s_active_tab) {
+                /* Highlight active: bright white with underline block */
+                ov_string(lbl, lbl_x, ty, cw, ch, 1, 1, 0.3f, 1);
+                /* Underline */
+                ov_quad(tab_x, ty + ch, tab_col_w * cw - pad, 2.0f,
+                        BG_U, BG_V, BG_U, BG_V, 1, 1, 0.3f, 1);
+            } else {
+                ov_string(lbl, lbl_x, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
+            }
         }
+        ty += row_h + pad; /* tab bar + blank */
+    }
 
-        /* Label */
+    /* Items for active tab */
+    for (int n = 0; n < tab_count; n++) {
+        int i = tab_item_at(n);
+        if (i < 0) break;
+
+        float r, g, b;
+        if (n == menu_cursor) { r = 1.0f; g = 1.0f; b = 0.3f; }
+        else                  { r = 0.75f; g = 0.75f; b = 0.75f; }
+
+        if (n == menu_cursor)
+            ov_string(">", tx, ty, cw, ch, r, g, b, 1);
+
         ov_string(menu_labels[i], tx + 2 * cw, ty, cw, ch, r, g, b, 1);
 
-        /* Value (right-aligned in value column) */
         char val[16];
         menu_get_value(i, val, sizeof(val));
         float vr = 1, vg = 1, vb = 1;
-        if (i == menu_cursor) { vr = 1; vg = 1; vb = 0.5f; }
+        if (n == menu_cursor) { vr = 1; vg = 1; vb = 0.5f; }
         ov_string_right(val, tx + cols * cw, ty, cw, ch, vr, vg, vb, 1);
 
-        /* Volume bar for volume items */
+        /* Volume bar */
         {
             int vol_val = -1;
             if (i == MI_MASTER_VOLUME) vol_val = g_pc_settings.master_volume;
-            else if (i == MI_BGM_VOLUME)  vol_val = g_pc_settings.bgm_volume;
-            else if (i == MI_SFX_VOLUME)  vol_val = g_pc_settings.sfx_volume;
+            else if (i == MI_BGM_VOLUME)   vol_val = g_pc_settings.bgm_volume;
+            else if (i == MI_SFX_VOLUME)   vol_val = g_pc_settings.sfx_volume;
             else if (i == MI_VOICE_VOLUME) vol_val = g_pc_settings.voice_volume;
             if (vol_val >= 0) {
                 float bar_x = tx + (val_col - 1) * cw;
@@ -450,9 +583,9 @@ static void draw_menu(float cw, float ch, float pad) {
                 ov_quad(bar_x, bar_y, bar_w, bar_h, BG_U, BG_V, BG_U, BG_V, 0.3f, 0.3f, 0.3f, 1);
                 if (fill > 0)
                     ov_quad(bar_x, bar_y, bar_w * fill, bar_h, BG_U, BG_V, BG_U, BG_V,
-                            i == menu_cursor ? 1.0f : 0.6f,
-                            i == menu_cursor ? 1.0f : 0.6f,
-                            i == menu_cursor ? 0.3f : 0.6f, 1);
+                            n == menu_cursor ? 1.0f : 0.6f,
+                            n == menu_cursor ? 1.0f : 0.6f,
+                            n == menu_cursor ? 0.3f : 0.6f, 1);
             }
         }
 
@@ -461,7 +594,7 @@ static void draw_menu(float cw, float ch, float pad) {
 
     /* Footer */
     ty += pad;
-    ov_string("D-Pad:Nav  L/R:Adjust", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
+    ov_string("L/R:Tab  U/D:Nav  L/R:Adj", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
     ty += row_h;
     ov_string("Select/Tab:Close+Save", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
 }

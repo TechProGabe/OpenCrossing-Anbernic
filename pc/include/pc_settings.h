@@ -12,7 +12,7 @@ typedef struct {
     int vsync;            /* 0=off, 1=on */
     int msaa;             /* 0=off, 2/4/8=samples */
     int preload_textures; /* 0=off (load on demand), 1=on (load all at startup), 2=on + cache file */
-    int frameskip;        /* 0=off, 1=skip every other frame, 2=skip 2 of 3, etc. */
+    int frameskip;        /* legacy: mapped to fps_target on load */
     int verbose;          /* 0=off, 1=on */
     int show_fps;         /* 0=off, 1=on */
     int master_volume;    /* 0-100 */
@@ -20,6 +20,10 @@ typedef struct {
     int sfx_volume;       /* 0-100 */
     int voice_volume;     /* 0-100 */
     int zoom_enabled;     /* 0=off, 1=on */
+    int fps_target;       /* 0=60fps, 1=50fps, 2=40fps, 3=30fps, 4=20fps, 5=unlimited, 6=auto */
+    int render_scale;     /* render resolution %: 100, 75, 50, 25 */
+    int window_size;      /* 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=custom */
+    int scale_mode;       /* 0=stretch, 1=center (letterbox) */
 } PCSettings;
 
 extern PCSettings g_pc_settings;

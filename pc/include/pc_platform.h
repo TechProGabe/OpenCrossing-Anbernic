@@ -97,8 +97,14 @@ void pc_platform_update_window_size(void);
 #define PC_NOOP_WIDESCREEN_STRETCH_OFF 0xAC5700u
 extern int g_pc_widescreen_stretch;
 
-/* --- Frameskip --- */
-extern int g_pc_frameskip_active;  /* 1 = this frame is being skipped (no GL draws) */
+/* --- Frameskip / tick batching --- */
+extern int g_pc_frameskip_active;  /* 1 = this is a logic-only tick (no GL draws, no pacing) */
+
+/* --- FPS target & render resolution --- */
+extern int g_pc_fps_target;   /* target FPS: 60, 50, 40, 30, or 0=unlimited; driven by fps_target setting */
+extern int g_pc_render_w;     /* render width  = window_w * render_scale/100 */
+extern int g_pc_render_h;     /* render height = window_h * render_scale/100 */
+extern int g_pc_scale_mode;   /* 0=stretch, 1=center */
 
 /* --- Camera zoom --- */
 extern float g_pc_zoom;  /* 1.0 = default, >1.0 = zoomed out, <1.0 = zoomed in */
@@ -111,6 +117,7 @@ extern int g_pc_menu_open;  /* 1 = settings menu is open, suppress game input */
 SDL_GameController* pc_pad_get_controller(void);
 
 /* --- Functions --- */
+void pc_gx_blit_to_screen(void);
 void pc_platform_init(void);
 void pc_platform_shutdown(void);
 void pc_platform_swap_buffers(void);
