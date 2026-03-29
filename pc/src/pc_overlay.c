@@ -125,9 +125,9 @@ static void menu_get_value(int item, char* buf, int sz) {
         break;
     case MI_ZOOM_ENABLED:  snprintf(buf, sz, "%s", g_pc_settings.zoom_enabled ? "ON" : "OFF"); break;
     case MI_FPS_TARGET: {
-        static const char* names[] = {"60 FPS", "50 FPS", "40 FPS", "30 FPS", "20 FPS", "Unlimited", "Auto"};
+        static const char* names[] = {"60 FPS", "50 FPS", "40 FPS", "30 FPS", "20 FPS", "Unlimited", "Auto", "Dynamic"};
         int t = g_pc_settings.fps_target;
-        if (t < 0 || t > 6) t = 0;
+        if (t < 0 || t > 7) t = 0;
         snprintf(buf, sz, "%s", names[t]);
         break;
     }
@@ -185,12 +185,14 @@ static void menu_adjust(int item, int dir) {
     case MI_FPS_TARGET: {
         /* Right = faster (lower index), Left = slower (higher index) */
         int v = g_pc_settings.fps_target - dir;
-        if (v < 0) v = 6; if (v > 6) v = 0;
+        if (v < 0) v = 7; if (v > 7) v = 0;
         g_pc_settings.fps_target = v;
-        static const int fps_hz[7] = {60, 50, 40, 30, 20, 0, 60};
+        static const int fps_hz[8] = {60, 50, 40, 30, 20, 0, 60, 60};
         g_pc_fps_target = fps_hz[v];
         if (v == 5) g_pc_no_framelimit = 1;
         else        g_pc_no_framelimit = 0;
+        extern void pc_dynamic_fps_reset(void);
+        pc_dynamic_fps_reset();
         break;
     }
     case MI_RENDER_SCALE: {
@@ -480,7 +482,7 @@ static void menu_process_input(void) {
 /* ---- Draw: FPS counter (top-right corner) ---- */
 static void draw_fps(float cw, float ch, float pad) {
     char line1[32], line2[32];
-    if (g_pc_fps_target > 0)
+    if (g_pc_fps_target > 0 && g_pc_settings.fps_target != 7)
         snprintf(line1, sizeof(line1), "%.1f/%d FPS", ov_fps, g_pc_fps_target);
     else
         snprintf(line1, sizeof(line1), "%.1f FPS", ov_fps);

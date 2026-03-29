@@ -26,6 +26,10 @@ static void (*vi_post_callback)(u32) = NULL;
 /* Total logic ticks since last FPS update (includes skipped render ticks) */
 static int s_logic_tick_count = 0;
 
+/* --- Dynamic FPS controller state --- */
+static double s_dyn_ema_us = 0.0;
+static int    s_dyn_inited = 0;
+
 void VIInit(void) { }
 
 void VIConfigure(void* rm) { (void)rm; }
@@ -65,6 +69,30 @@ static void pc_adaptive_fps_update(double render_fps) {
     }
 }
 
+void pc_dynamic_fps_reset(void) {
+    s_dyn_ema_us = 0.0;
+    s_dyn_inited = 0;
+}
+
+static void pc_dynamic_fps_update(Uint64 work_us) {
+    if (g_pc_settings.fps_target != 7) return;
+
+    /* EMA alpha=0.25: absorbs single-frame spikes, reacts to sustained load in ~4 frames */
+    if (!s_dyn_inited) {
+        s_dyn_ema_us = (double)work_us;
+        s_dyn_inited = 1;
+    } else {
+        s_dyn_ema_us = 0.25 * (double)work_us + 0.75 * s_dyn_ema_us;
+    }
+
+    /* fps = 1e6 / work_us converges to optimal fps for 100% speed.
+     * Clamp: max 60fps, min 10fps. */
+    double fps_opt = 1000000.0 / s_dyn_ema_us;
+    if (fps_opt > 60.0) fps_opt = 60.0;
+    if (fps_opt < 10.0) fps_opt = 10.0;
+    g_pc_fps_target = (int)(fps_opt + 0.5);
+}
+
 void VIWaitForRetrace(void) {
     if (!perf_freq) perf_freq = SDL_GetPerformanceFrequency();
 
@@ -101,6 +129,12 @@ void VIWaitForRetrace(void) {
     pc_overlay_draw();
     pc_platform_swap_buffers();
     Uint64 t_after_swap = SDL_GetPerformanceCounter();
+
+    /* Dynamic FPS: compute optimal fps from actual work cost before the pacing wait */
+    if (g_pc_settings.fps_target == 7 && frame_start_time) {
+        Uint64 work_us = (t_after_swap - frame_start_time) * 1000000 / perf_freq;
+        pc_dynamic_fps_update(work_us);
+    }
 
     /* Frame pacing: wait until the target visual-frame period has elapsed since
      * frame_start_time (which was set at the start of this batch, not this tick). */

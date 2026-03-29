@@ -20,7 +20,7 @@ typedef struct {
     int sfx_volume;       /* 0-100 */
     int voice_volume;     /* 0-100 */
     int zoom_enabled;     /* 0=off, 1=on */
-    int fps_target;       /* 0=60fps, 1=50fps, 2=40fps, 3=30fps, 4=20fps, 5=unlimited, 6=auto */
+    int fps_target;       /* 0=60fps, 1=50fps, 2=40fps, 3=30fps, 4=20fps, 5=unlimited, 6=auto, 7=dynamic */
     int render_scale;     /* render resolution %: 100, 75, 50, 25 */
     int window_size;      /* 0=320x240, 1=480x360, 2=640x480, 3=960x720, 4=1280x960, 5=custom */
     int scale_mode;       /* 0=stretch, 1=center (letterbox) */

@@ -45,7 +45,7 @@ static const char* DEFAULT_SETTINGS =
     "preload_textures = 0\n"
     "\n"
     "[Performance]\n"
-    "# FPS target: 0=60fps, 1=50fps, 2=40fps, 3=30fps, 4=20fps, 5=unlimited, 6=auto\n"
+    "# FPS target: 0=60fps, 1=50fps, 2=40fps, 3=30fps, 4=20fps, 5=unlimited, 6=auto, 7=dynamic\n"
     "fps_target = 0\n"
     "\n"
     "# Render scale %%: 100=native, 75, 50, 25 (lower = faster on limited hardware)\n"
@@ -73,7 +73,7 @@ static const char* DEFAULT_SETTINGS =
     "\n"
     "[Debug]\n"
     "# Verbose logging: 0 = off, 1 = on (log to console)\n"
-    "verbose = 0\n";
+    "verbose = 1\n";
 
 static const char* skip_ws(const char* s) {
     while (*s == ' ' || *s == '\t') s++;
@@ -110,7 +110,7 @@ static void apply_setting(const char* key, const char* value) {
             g_pc_settings.fps_target = 3; /* 30fps */
         g_pc_settings.frameskip = val;
     } else if (strcmp(key, "fps_target") == 0) {
-        if (val >= 0 && val <= 6) g_pc_settings.fps_target = val;
+        if (val >= 0 && val <= 7) g_pc_settings.fps_target = val;
     } else if (strcmp(key, "render_scale") == 0) {
         if (val == 25 || val == 50 || val == 75 || val == 100)
             g_pc_settings.render_scale = val;
@@ -206,7 +206,7 @@ static const int s_window_presets[5][2] = {
 };
 
 /* FPS target enum -> actual Hz */
-static const int s_fps_target_hz[7] = {60, 50, 40, 30, 20, 0, 60}; /* 6=auto starts at 60 */
+static const int s_fps_target_hz[8] = {60, 50, 40, 30, 20, 0, 60, 60}; /* 6=auto, 7=dynamic start at 60 */
 
 void pc_settings_apply(void) {
     if (!g_pc_window) return;
@@ -229,7 +229,7 @@ void pc_settings_apply(void) {
 
     /* Apply fps_target to the global used by the frame pacing system */
     int ti = g_pc_settings.fps_target;
-    if (ti < 0 || ti > 6) ti = 0;
+    if (ti < 0 || ti > 7) ti = 0;
     g_pc_fps_target = s_fps_target_hz[ti];
 
     pc_platform_update_window_size(); /* also updates g_pc_render_w/h */
