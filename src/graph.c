@@ -29,6 +29,7 @@
 #include "pc_model_viewer.h"
 #include "pc_diag.h"
 #include "pc_platform.h"
+#include "pc_settings.h"
 #include <setjmp.h>
 extern int g_pc_running;
 #endif
@@ -396,12 +397,17 @@ extern void graph_proc(void* arg) {
             {
                 double ticks_per_visual;
                 int ticks, t;
-                switch (g_pc_fps_target) {
-                    case 20: ticks_per_visual = 3.0; break;
-                    case 30: ticks_per_visual = 2.0; break;
-                    case 40: ticks_per_visual = 1.5; break;
-                    case 50: ticks_per_visual = 1.2; break;
-                    default: ticks_per_visual = 1.0; break;
+                if (g_pc_settings.fps_target == 7) {
+                    /* Dynamic: arbitrary fps, use exact ratio (accumulator handles fractions) */
+                    ticks_per_visual = (g_pc_fps_target > 0) ? 60.0 / (double)g_pc_fps_target : 1.0;
+                } else {
+                    switch (g_pc_fps_target) {
+                        case 20: ticks_per_visual = 3.0; break;
+                        case 30: ticks_per_visual = 2.0; break;
+                        case 40: ticks_per_visual = 1.5; break;
+                        case 50: ticks_per_visual = 1.2; break;
+                        default: ticks_per_visual = 1.0; break;
+                    }
                 }
                 tick_accumulator += ticks_per_visual;
                 ticks = (int)tick_accumulator;
