@@ -274,7 +274,7 @@ static int aHUS_check_player(HOUSE_ACTOR* house, GAME_PLAY* play) {
         } else {
             animal_p = aHUS_GET_ANIMAL_P(house);
             sched_p = mNPS_get_schedule_area(&animal_p->id);
-            house->arg3 = sched_p->current_type;
+            house->arg3 = sched_p != NULL ? sched_p->current_type : 0;
         }
 
         if (aHUS_odekake_check(house, play)) {
