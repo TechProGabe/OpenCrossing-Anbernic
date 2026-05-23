@@ -948,6 +948,7 @@ int mCD_InitGameStart_bg(int player_no, int card_private_idx, int start_cond, s3
                 Private_c* foreigner = mPr_GetForeignerP();
                 mPr_CopyPrivateInfo(foreigner, &l_mcd_foreigner_file.file.priv);
                 mPr_LoadPak_and_SetPrivateInfo2(foreigner, (u8)player_no);
+                mHm_SetNowHome();
                 OSReport("[PC] InitGameStart: OUTGOING_FOREIGNER — landed player_no=%d\n",
                          Common_Get(player_no));
             }
