@@ -516,7 +516,7 @@ static int aNPC_setupActor_proc(GAME_PLAY* play, mActor_name_t name, s8 idx, int
         pos.y = mCoBG_GetBgY_OnlyCenter_FromWpos(pos, 0.0f);
     }
 
-    aNPC_setupActor_sub(play, idx, name, profile, &pos, mvlist_no, arg);
+    return aNPC_setupActor_sub(play, idx, name, profile, &pos, mvlist_no, arg);
 }
 
 #ifndef aNPC_NPC2
@@ -644,7 +644,8 @@ static ACTOR* aNPC_get_actor_area_proc(size_t size, const char* actor_name, int 
     int* used = CLIP(npc_clip)->keep_actor_used;
     int i;
 
-    if (size > 0x9D0) {
+    /* TARGET_PC struct fields (DT accumulators etc.) grow some NPC actor classes past the GC 0x9D0 slot */
+    if (size > 0xA40) {
         return NULL;
     }
 
@@ -694,7 +695,7 @@ static void aNPC_dma_draw_data_proc(aNPC_draw_data_c* draw_data_p, mActor_name_t
 #ifndef aNPC_NPC2
 typedef struct {
     u64 align;
-    u8 buf[0x9D0];
+    u8 buf[0xA40]; /* PC: Increased from 0x9D0 */
 } aNPC_actor_class_overlay_c;
 
 typedef struct {
