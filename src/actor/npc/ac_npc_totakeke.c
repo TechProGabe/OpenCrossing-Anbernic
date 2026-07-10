@@ -11,12 +11,12 @@
 #include "m_ledit_ovl.h"
 
 #ifdef TARGET_PC
-static void aNTT_schedule_proc();
+static void aNTT_schedule_proc(NPC_TOTAKEKE_ACTOR* totakeke, GAME_PLAY* play, int schedule_id);
 static int aNTT_change_talk_proc(NPC_TOTAKEKE_ACTOR*, int);
 static void aNTT_setup_think_proc(NPC_TOTAKEKE_ACTOR*, GAME_PLAY*, u8);
 static int aNTT_enso_init(NPC_TOTAKEKE_ACTOR*);
 #else
-void aNTT_schedule_proc();
+void aNTT_schedule_proc(NPC_TOTAKEKE_ACTOR* totakeke, GAME_PLAY* play, int schedule_id);
 int aNTT_change_talk_proc(NPC_TOTAKEKE_ACTOR*, int);
 void aNTT_setup_think_proc(NPC_TOTAKEKE_ACTOR*, GAME_PLAY*, u8);
 int aNTT_enso_init(NPC_TOTAKEKE_ACTOR*);
@@ -79,7 +79,7 @@ static void aNTT_actor_ct(ACTOR *actorx, GAME *game) {
         xyz_t wpos;
         NPC_TOTAKEKE_ACTOR *totakeke = (NPC_TOTAKEKE_ACTOR *)actorx;
 
-        totakeke->npc_class.schedule.schedule_proc = aNTT_schedule_proc;
+        totakeke->npc_class.schedule.schedule_proc = (aNPC_SCHEDULE_PROC)aNTT_schedule_proc;
         CLIP(npc_clip)->ct_proc(actorx, game, &ct_data);
         totakeke->npc_class.palActorIgnoreTimer = -1;
         totakeke->npc_class.condition_info.hide_flg = FALSE;
