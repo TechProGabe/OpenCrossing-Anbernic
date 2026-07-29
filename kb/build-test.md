@@ -48,22 +48,43 @@ silently arm64 and had to be rebuilt via `docker commit` from an explicit
 
 ## Desktop/macOS build
 
-`./build_pc.sh` (needs SDL2). Apple linker guards live in pc/CMakeLists.txt
+**Tier 1 does not work on Apple Silicon** (verified 2026-07-29): pc/CMakeLists.txt:41
+fatal-errors on any 64-bit configure ("This project MUST be built as 32-bit
+(pointer-to-u32 casts in JSystem)"), and Homebrew gcc on arm64 macOS has no
+32-bit target, so `harness/run-native.sh` (and any bare `cmake ..` in pc/build)
+dies at configure. There is also no `build_pc.sh` in the tree — kb said there
+was; it doesn't exist. Use the armhf Docker build for compile checks; an
+`ac_haniwa` one-TU change plus link took ~4 min under QEMU.
+Tier 2 (`pc/build-linux-arm64-gles`) still holds a working **64-bit** aarch64
+binary, but its CMakeCache dates from 2026-07-12 — a fresh configure there
+would hit the same guard, so don't wipe that build dir expecting it to come
+back (why the guard and the merged upstream 64-bit work coexist is unresolved).
+
+Apple linker guards live in pc/CMakeLists.txt
 (`--version-script`/`--allow-multiple-definition` are GNU-ld-only) and
 pc/src/pc_stubs.c (`#ifndef __APPLE__` cKF stubs).
 
+Docker gotchas seen again 2026-07-29:
+- binfmt registration is lost on **every** `colima start`, not just on VM
+  creation — `docker run --privileged --rm tonistiigi/binfmt --install arm`
+  again or the armhf container exits `exec /usr/bin/bash: exec format error`.
+- Don't pipe the build through `| tail` — nothing is flushed until the
+  container exits, so a 4-minute build looks hung. Redirect to a file (or
+  `tee`) if you want progress.
+
 ## Compile flags (don't regress)
 
-- `CMAKE_C(XX)_FLAGS_RELEASE` in pc/CMakeLists.txt MUST keep an explicit
-  `-O1` — these overrides replace CMake's defaults entirely, and they
-  historically shipped with no -O at all (game code at -O0).
+- `CMAKE_C(XX)_FLAGS_RELEASE` in pc/CMakeLists.txt carries **no -O** —
+  these overrides replace CMake's defaults entirely, and that is deliberate:
+  decomp game code crashes at -O2 and SIGBUSes at -O1 on device (kb/perf.md
+  "-O2 regression"). Speed comes from per-source -O2/-O3 on proven TUs.
 - The UB-guard flags next to it (-fno-delete-null-pointer-checks etc.) exist
   because decomp code relies on UB; keep them when touching optimization.
 - `pc_gx_texture.c` gets per-source -O3 (set_source_files_properties uses the
   `${CMAKE_CURRENT_SOURCE_DIR}/src/...` absolute form — must match how
   PC_SOURCES lists it).
-- Game (decomp) code is capped at **-O1** — -O2 crash-loops on device
-  (see kb/perf.md "-O2 regression").
+- Game (decomp) code stays **unoptimized** — -O2 crash-loops and -O1
+  SIGBUSes on device (see kb/perf.md "-O2 regression").
 
 ## Shader seed (pc/shaders/shader_seed.bin)
 

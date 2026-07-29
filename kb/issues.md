@@ -139,6 +139,13 @@
   worst were the 24 mid-session shader compiles — fixed by 101-config
   seed (kb/perf.md #12).
 
+- **Log noise: `[PC] toNextLand: l_keepSave not set, aborting`** (2026-07-29,
+  cosmetic). `mCD_toNextLand` (pc/src/pc_m_card.c:1242) runs on every play-scene
+  teardown (`m_play.c:393`), not just travel, so this line appears once per
+  scene change in every device log — it looks alarming in user-submitted logs
+  (7 of them in issue #6's) and means nothing. Downgrade to verbose-only or
+  drop when next touching that file.
+
 ## Port limitations (by design — answer reports with these, don't reopen)
 
 - **NES/famicom furniture always says "I don't have any software"**

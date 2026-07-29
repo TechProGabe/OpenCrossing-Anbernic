@@ -118,3 +118,19 @@
 - Open after release: tourney fishing-on-land (retest + wade log), green
   diary magenta (empty-TLUT log), dock 1.4s hang ([PROF] awaiting log),
   inventory aspect flicker.
+
+## Post-v0.5.0 (dev)
+
+- **2026-07-29** — Issue #6 ("save never completes", RG35XX Pro/Knulli)
+  answered as NOT A BUG: the door gyroid's intro refusal message reads like a
+  progress message. Investigation method worth keeping: decode the game's own
+  text bank (kb/game.md "Reading the game's own dialogue") instead of guessing
+  at dialogue, then trace the actor talk state machine by its order codes.
+  Shipped a `[PC] Door gyroid:` branch log so the next such report is
+  answerable from log.txt; README FAQ + kb entries added. Also found this way:
+  a user-visible refusal message with no logging is indistinguishable from a
+  silent failure — prefer logging *decision branches*, not just errors.
+- **2026-07-29** — kb/build-test.md corrected: it claimed game code was capped
+  at -O1 (it carries no -O at all) and pointed at a `build_pc.sh` that does not
+  exist. Tier-1 native macOS build confirmed dead on Apple Silicon (32-bit
+  guard, pc/CMakeLists.txt:41) — armhf Docker is the only compile check here.

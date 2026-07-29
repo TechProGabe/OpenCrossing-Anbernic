@@ -45,3 +45,43 @@
   saves currently crash the port.
 - `--time HOUR` overrides in-game hour; handy for testing time-of-day
   rendering (fog/lighting TEV configs differ by hour → different shaders).
+
+## Reading the game's own dialogue (2026-07-29, issue #6)
+
+Fastest way to settle "what does this message actually say / what does it do":
+dump the text bank and read the entry. Message numbers in code (`MSG_2350`,
+`aNRST` `msg_table[] = {0x30CD, ...}`) are **entry indices** into it.
+
+```bash
+# 1. pull forest_2nd.arc out of the iso (GC FST: u32 fst_offset/size at 0x424,
+#    12-byte entries, flag/name-offset/data-offset/size, names in the string
+#    table after the entries) — a ~20-line python FST reader does it
+# 2. python3 tools/arc_tool.py forest_2nd.arc outdir     # RARC unpack
+# 3. python3 tools/msg_tool.py -m unpack \
+#      outdir/bin2/data/message_data.bin messages.txt    # finds *_table.bin itself
+```
+
+Output is `[[ENTRY n START]]` blocks with control codes decoded, e.g.
+`<<BTN>>` (wait for A), `<<MSGEND>>`, `<<OPENCHOICE>>`, `<<SETNEXTMSGn>>`,
+and `<<DEMONPC0 [idx hi lo]>>` — that last one is what drives NPC talk state
+machines: it sets `mDemo_Set_OrderValue(mDemo_ORDER_NPC0, idx, val)` from
+`mMsg_Main_Cursol_SetDemoOrder_ControlCursol` (m_msg_cursol.c_inc:124), and
+actor procs idle until `mDemo_Get_OrderValue(..., 9) != 0`. So a dialogue that
+appears stuck is usually an actor waiting on an order code the script has not
+reached — or, as in issue #6, a message that only *reads* like it's working.
+`string_data.bin`/`select_data.bin` etc. unpack the same way (see
+`aram_resName[]`, jsyswrap.cpp:373).
+
+## In-game save flow (who actually writes the GCI)
+
+Door gyroid (`ac_haniwa*`, "haniwa" = gyroid) only *offers* the save:
+`aHNW_ACTION_SAVE_CHECK` → `SAVE_END_WAIT` → `PL_APPROACH_DOOR` → player walks
+in the door → `SCENE_PLAYERSELECT_SAVE` (m_scene.c:354) → restart NPC
+(`ac_npc_restart_talk.c_inc:191`, the "Are you done playing?" animal) →
+`mCD_SaveHome_bg` (pc/src/pc_m_card.c:989) → `pc_save_write_gci_ex`.
+`param_1` there is 1 for save-and-continue (gyroid/door), 0 for the final
+save-and-quit — it decides whether Resetti's reset code stays armed.
+Gyroid refuses entirely during the intro; see kb/issues.md.
+The only silent path through the writer is `!pc_save_ready` (returns TRUE
+without writing), so "log.txt mentions no save at all" means the save scene
+was never reached, not that a write failed.
