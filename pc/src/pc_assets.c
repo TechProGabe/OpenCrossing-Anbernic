@@ -30666,6 +30666,11 @@ void pc_assets_init(void) {
     { extern void _pc_load_JUTResFONT_Ascfont_fix12(void);
       _pc_load_JUTResFONT_Ascfont_fix12(); }
 
+    /* === BEGIN menu-command label overlay (issue #4) === */
+    { extern void _pc_overlay_tag_words(void);
+      _pc_overlay_tag_words(); }
+    /* === END menu-command label overlay === */
+
     /* Free ROM data */
     if (g_rel_data) { free(g_rel_data); g_rel_data = NULL; }
     if (g_dol_data) { free(g_dol_data); g_dol_data = NULL; }
