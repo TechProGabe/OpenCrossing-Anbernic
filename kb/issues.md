@@ -162,6 +162,33 @@
   same as real GC hardware; full source proof in kb/game.md. Not RNG,
   not village rating.
 
+- **"Save never completes — door gyroid stuck on *I am currently
+  processing data*"** (issue #6, 2026-07-29, RG35XX Pro/Knulli, NOT A
+  BUG): that text is the gyroid's *refusal* message, not a progress
+  message — MSG_2350 (message_data.bin entry 2350): "Welcome home, X! /
+  I am currently processing data for X. / Good luck with your part-time
+  job." Two A presses close it; no save is ever requested, which is why
+  such a log.txt has zero save/card lines and card_a/ stays empty.
+  Gate: `aHNW_decide_msg_idx_dance` (ac_haniwa_move.c_inc:169) picks
+  `aHNW_MSG_NEED_FRIEND` while all three hold — `has_saved == FALSE`,
+  `mEv_CheckFirstJob() == TRUE` (set when Nook hands out the job,
+  ac_npc_guide_move.c_inc:796; cleared when the errands finish,
+  ac_intro_demo_move.c_inc:197), and `mNpc_GetFriendAnimalNum() == 0`.
+  Stock GC logic, no pc/ override. Answer: finish Nook's part-time job
+  or talk to villagers until one remembers you.
+  Save path for reference: gyroid → player walks in the door →
+  SCENE_PLAYERSELECT_SAVE (m_scene.c:354) → restart NPC
+  (ac_npc_restart_talk.c_inc:191) → `mCD_SaveHome_bg`
+  (pc/src/pc_m_card.c:989). Only silent path through that writer is
+  `!pc_save_ready`; every other outcome logs, so "no save lines at all"
+  means the save scene was never entered.
+  INSTRUMENTED 2026-07-29: `[PC] Door gyroid: <branch> | has_saved=N
+  first_job=N friends=N` on every gyroid talk — makes the next such
+  report answerable from log.txt alone.
+  Aside from the same report: on Knulli the port lives at
+  `/userdata/roms/ports/ac-gc` (not `/userdata/ports/...`) — harmless,
+  all save paths are cwd-relative.
+
 ## Resolved (keep for pattern-matching)
 
 - **"Redd never sends the visit letter"** (reported + user-confirmed

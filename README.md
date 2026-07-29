@@ -53,6 +53,10 @@ shader cache. Later launches are much faster. Assets are read straight from
 the disc image (no extraction); saves, settings, and logs live in
 `ports/ac-gc/`.
 
+On Knulli that folder is `/userdata/roms/ports/ac-gc/` rather than
+`/userdata/ports/ac-gc/` — the launcher resolves it either way, so put the
+files wherever that firmware keeps its `ports` folder.
+
 ### Troubleshooting
 
 - **"NO GAME DISC IMAGE FOUND" / "WRONG GAME VERSION" screen:** the port
@@ -112,6 +116,14 @@ RK3566, etc.) are **not** expected to work.
   discs are different software (different code, timing, text banks) and
   are detected and refused at launch with an on-screen message. Any
   legally-dumped USA copy works.
+- **The gyroid at my door says "I am currently processing data" and never
+  saves — is saving broken?** No, that message is the gyroid *declining* to
+  save, not a progress bar (it ends with "Good luck with your part-time
+  job" — press A to close it). Same as the GameCube original: until you
+  finish Nook's part-time job errands, or talk to villagers until one
+  remembers you, the gyroid won't offer to save. After your first real
+  save it never appears again. If saving genuinely fails, `log.txt` shows
+  a `GCI save:` line explaining why.
 - **Do the NES games work?** No. The in-game NES emulator is PowerPC
   assembly in the original code and cannot run on these devices, so every
   NES furniture item shows *"I want to play my NES, but I don't have any

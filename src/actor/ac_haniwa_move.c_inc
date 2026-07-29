@@ -21,6 +21,9 @@
 #include "m_submenu.h"
 #include "m_field_info.h"
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "dolphin/os.h"
+#endif
 
 static void aHNW_actor_draw(ACTOR* actor, GAME* game);
 
@@ -209,6 +212,36 @@ static void aHNW_set_talk_info_dance(ACTOR* actor) {
             break;
         }
     }
+
+#ifdef TARGET_PC
+    /* Which branch the door gyroid takes decides whether saving is even
+     * offered, and the refusal messages read like progress messages ("I am
+     * currently processing data...") — players report them as save hangs
+     * (issue #6). Log the branch and the gate inputs so log.txt answers it. */
+    {
+        static const char* branch_name[aHNW_MSG_NUM] = {
+            "NO_OWNER (house unowned)",
+            "PROCEEDS (bells to hand over)",
+            "NORMAL (save offered)",
+            "OTHER_OWNER (another player's house)",
+            "NEED_FRIEND (intro: no save until first job done or a villager remembers you)",
+        };
+        u32 pl_no = Common_Get(player_no);
+        Private_c* priv = Common_Get(now_private);
+        int has_saved = -1;
+        int friends = -1;
+
+        if (pl_no < PLAYER_NUM) {
+            has_saved = Save_GetPointer(homes[mHS_get_arrange_idx(pl_no)])->flags.has_saved;
+        }
+        if (priv != NULL) {
+            friends = mNpc_GetFriendAnimalNum(&priv->player_ID);
+        }
+
+        OSReport("[PC] Door gyroid: %s | has_saved=%d first_job=%d friends=%d\n", branch_name[msg_idx], has_saved,
+                 mEv_CheckFirstJob(), friends);
+    }
+#endif
 
     mDemo_Set_msg_num(msg_no[msg_idx]);
 }
