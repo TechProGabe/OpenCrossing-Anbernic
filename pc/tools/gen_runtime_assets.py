@@ -21,6 +21,8 @@ Usage:
     python gen_runtime_assets.py --dry-run   # show changes without writing
     python gen_runtime_assets.py --fix-offsets        # fix ROM offsets in existing source files
     python gen_runtime_assets.py --fix-offsets --dry-run  # preview offset fixes
+    python gen_runtime_assets.py --tag-words          # overlay menu-command labels from REL (issue #4)
+    python gen_runtime_assets.py --tag-words --dry-run    # preview label overlay
 """
 
 import re
@@ -1031,15 +1033,182 @@ def generate_pc_assets_h(dry_run):
         print(f"[DRY-RUN] Would generate: {OUTPUT_ASSETS_H.relative_to(DECOMP_ROOT)}")
 
 
+# --- Menu-command label overlay (--tag-words mode) ---
+#
+# The action/selection menu labels ("Grab", "Give Away", "Write Letter", ...)
+# live in m_tag_ovl.c as inline C-literal `mTG_tag_word_c` structs, NOT as
+# #include "assets/*.inc" arrays, so process_all() skips them and they get
+# compiled into the port's .data. A patched/localized foresta.rel.szs then has
+# no effect on them, unlike Dolphin (which LoadLinks the disc REL). See issue #4.
+#
+# This pass registers the 16-byte `str` field of every mTG_tag_word_* symbol as
+# a REL-sourced asset: it appends a generated _pc_overlay_tag_words() to
+# m_tag_ovl.c (same mechanism as the per-file static-init functions) that
+# memcpys each label from the loaded REL at its original ROM .data offset, and
+# wires a call to it into pc_assets_init() while g_rel_data is still alive.
+
+TAG_WORD_OVL_C = DECOMP_ROOT / "src" / "game" / "m_tag_ovl.c"
+TAG_WORD_STR_LEN = 16  # mTG_TAG_STR_LEN; copy ONLY str, not the trailing move_proc
+TAG_WORD_SYM_RE = re.compile(r'^mTG_tag_word_\w+$')
+
+OVL_BEGIN = '/* === BEGIN auto-generated menu-command label overlay (issue #4) === */'
+OVL_END = '/* === END auto-generated menu-command label overlay === */'
+OVL_CALL_BEGIN = '    /* === BEGIN menu-command label overlay (issue #4) === */'
+OVL_CALL_END = '    /* === END menu-command label overlay === */'
+
+
+def calibrate_rel_data_base(scan_dirs, foresta_syms):
+    """Recover the REL .data section file offset from existing REL-sourced
+    pc_load_asset() calls, without needing the ROM/REL files present.
+
+    For a unique .data symbol, base = rom_off - section_offset. Returns the base
+    (majority vote if samples disagree), or None if nothing to calibrate from.
+    """
+    dup_names = {n for n, e in foresta_syms.items() if len(e) > 1}
+    samples = []
+    for scan_dir in scan_dirs:
+        for root, dirs, fnames in os.walk(scan_dir):
+            for fname in fnames:
+                if not fname.endswith(('.c', '.cpp', '.c_inc')):
+                    continue
+                try:
+                    content = (Path(root) / fname).read_text(encoding='utf-8', errors='replace')
+                except Exception:
+                    continue
+                if 'pc_load_asset(' not in content:
+                    continue
+                for cm in PC_LOAD_ASSET_RE.finditer(content):
+                    var_name = cm.group(3)
+                    cur_rom_off = int(cm.group(6), 16)
+                    rom_src = int(cm.group(8))
+                    if rom_src != SRC_REL or var_name in dup_names:
+                        continue
+                    entries = foresta_syms.get(var_name, [])
+                    if len(entries) == 1 and entries[0][0] == 'data':
+                        samples.append(cur_rom_off - entries[0][1])
+    if not samples:
+        return None
+    from collections import Counter
+    base, _ = Counter(samples).most_common(1)[0]
+    return base
+
+
+def generate_tag_word_overlay(dry_run=False):
+    foresta_syms = parse_symbols_with_section(FORESTA_SYMBOLS)
+
+    base = calibrate_rel_data_base(SCAN_DIRS, foresta_syms)
+    if base is None:
+        print("ERROR: could not calibrate REL .data base offset (no REL-sourced "
+              "pc_load_asset calls found)")
+        return
+    print(f"REL .data section file offset: 0x{base:X}")
+
+    # Collect tag-word symbols with a unique .data location, sorted by address.
+    tag_words = []
+    for name, entries in foresta_syms.items():
+        if not TAG_WORD_SYM_RE.match(name):
+            continue
+        data_entries = [(off, size) for sec, off, size in entries if sec == 'data']
+        if len(data_entries) != 1:
+            print(f"  WARNING: {name} has {len(data_entries)} .data locations, skipping")
+            continue
+        off, size = data_entries[0]
+        tag_words.append((off, name))
+    tag_words.sort()
+
+    if not tag_words:
+        print("ERROR: no mTG_tag_word_* symbols found in foresta symbols.txt")
+        return
+    print(f"Found {len(tag_words)} menu-command label symbols")
+
+    # --- Build the overlay init function appended to m_tag_ovl.c ---
+    lines = [
+        OVL_BEGIN,
+        '/* Sources the mTG_tag_word_c label strings from the loaded',
+        ' * foresta.rel.szs at their original ROM .data offsets, so a patched/',
+        ' * localized REL drives the action/selection menu labels (matching',
+        " * Dolphin's LoadLink behavior) instead of the compiled-in C literals.",
+        ' * Generated by gen_runtime_assets.py --tag-words; do not edit by hand.',
+        ' * Only the 16-byte str field is overwritten -- the trailing 4-byte',
+        ' * move_proc is a relocated native function pointer and is left intact. */',
+        '#ifdef TARGET_PC',
+        'extern void pc_load_asset(const char*, void*, unsigned int, unsigned int, int, int);',
+        'void _pc_overlay_tag_words(void) {',
+    ]
+    for off, name in tag_words:
+        rom_off = base + off
+        lines.append(
+            f'    pc_load_asset(NULL, {name}.str, mTG_TAG_STR_LEN, '
+            f'0x{rom_off:X}, {SRC_REL} /*SRC_REL*/, {SWAP_NONE} /*SWAP_NONE*/);'
+        )
+    lines += ['}', '#endif', OVL_END, '']
+    ovl_block = '\n'.join(lines)
+
+    content = TAG_WORD_OVL_C.read_text(encoding='utf-8')
+    if OVL_BEGIN in content:
+        # Replace existing block (idempotent re-run).
+        pre = content[:content.index(OVL_BEGIN)]
+        post = content[content.index(OVL_END) + len(OVL_END):]
+        new_content = pre.rstrip('\n') + '\n\n' + ovl_block + post.lstrip('\n')
+    else:
+        new_content = content.rstrip('\n') + '\n\n' + ovl_block
+
+    if new_content != content:
+        if not dry_run:
+            TAG_WORD_OVL_C.write_text(new_content, encoding='utf-8')
+            print(f"Updated: {TAG_WORD_OVL_C.relative_to(DECOMP_ROOT)}")
+        else:
+            print(f"[DRY-RUN] Would update: {TAG_WORD_OVL_C.relative_to(DECOMP_ROOT)}")
+    else:
+        print(f"Unchanged: {TAG_WORD_OVL_C.relative_to(DECOMP_ROOT)}")
+
+    # --- Wire the call into pc_assets_init() (before g_rel_data is freed) ---
+    _wire_overlay_call(dry_run)
+
+
+def _wire_overlay_call(dry_run):
+    content = OUTPUT_ASSETS_C.read_text(encoding='utf-8')
+    call_block = (
+        f'{OVL_CALL_BEGIN}\n'
+        f'    {{ extern void _pc_overlay_tag_words(void);\n'
+        f'      _pc_overlay_tag_words(); }}\n'
+        f'{OVL_CALL_END}\n'
+    )
+    if OVL_CALL_BEGIN in content:
+        pre = content[:content.index(OVL_CALL_BEGIN)]
+        post = content[content.index(OVL_CALL_END) + len(OVL_CALL_END):]
+        new_content = pre + call_block.rstrip('\n') + '\n\n' + post.lstrip('\n')
+    else:
+        anchor = '    /* Free ROM data */'
+        idx = content.rfind(anchor)
+        if idx == -1:
+            print("ERROR: could not find '/* Free ROM data */' anchor in pc_assets.c")
+            return
+        new_content = content[:idx] + call_block + '\n' + content[idx:]
+
+    if new_content != content:
+        if not dry_run:
+            OUTPUT_ASSETS_C.write_text(new_content, encoding='utf-8')
+            print(f"Updated: {OUTPUT_ASSETS_C.relative_to(DECOMP_ROOT)} (wired _pc_overlay_tag_words call)")
+        else:
+            print(f"[DRY-RUN] Would wire _pc_overlay_tag_words call into "
+                  f"{OUTPUT_ASSETS_C.relative_to(DECOMP_ROOT)}")
+    else:
+        print(f"Unchanged: {OUTPUT_ASSETS_C.relative_to(DECOMP_ROOT)}")
+
+
 def main():
     dry_run = '--dry-run' in sys.argv
     scan_only = '--scan-only' in sys.argv
     fix_offsets = '--fix-offsets' in sys.argv
+    tag_words = '--tag-words' in sys.argv
 
     print(f"Decomp root: {DECOMP_ROOT}")
     print()
 
-    if fix_offsets:
+    if tag_words:
+        generate_tag_word_overlay(dry_run=dry_run)
+    elif fix_offsets:
         fix_existing_offsets(SCAN_DIRS, dry_run=dry_run)
     else:
         process_all(SCAN_DIRS, dry_run=dry_run, scan_only=scan_only)
