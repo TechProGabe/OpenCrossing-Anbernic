@@ -4156,6 +4156,7 @@ static void mTG_catch_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     int item_cond = mPr_ITEM_COND_NORMAL;
     mActor_name_t* item_p = NULL;
     Mail_c* mail_p = NULL;
+    mActor_name_t item = EMPTY_NO;
 
     if (cur_tag->table == mTG_TABLE_ITEM) {
         idx = mTG_get_table_idx(tag);
@@ -4191,8 +4192,6 @@ static void mTG_catch_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
             }
         }
     } else {
-        mActor_name_t item;
-
         switch (cur_tag->table) {
             case mTG_TABLE_HANIWA:
                 idx = tag->tag_col;
