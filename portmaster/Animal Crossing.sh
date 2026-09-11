@@ -47,21 +47,19 @@ EOF
 fi
 
 export XDG_DATA_HOME="$CONFDIR"
-export LD_LIBRARY_PATH="/usr/lib32:$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/usr/lib32:/usr/lib:$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
 
-# Clear PipeWire vars for 32-bit binary compatibility
-unset SPA_PLUGIN_DIR
-unset PIPEWIRE_MODULE_DIR
-
-# Set soundcard 0 (audiocodec) explicitly for ALSA
-export AUDIODEV=hw:0,0
-export ALSA_CARD=audiocodec
-
-# Ensure standard library fallback paths are present in LD_LIBRARY_PATH
-export LD_LIBRARY_PATH="$GAMEDIR/libs.${DEVICE_ARCH}:/usr/lib32:/usr/lib:$LD_LIBRARY_PATH"
-
-# Set a SINGLE valid SDL audio driver (ALSA handles the H700 audio codec directly)
-export SDL_AUDIODRIVER=alsa
+if [ -d /usr/lib32/spa-0.2 ]; then
+  # muOS: 32-bit PipeWire clients need the lib32 plugin paths set explicitly
+  # or pw_loop_new fails with "can't make support.system handle".
+  export SPA_PLUGIN_DIR=/usr/lib32/spa-0.2
+  [ -d /usr/lib32/pipewire-0.3 ] && export PIPEWIRE_MODULE_DIR=/usr/lib32/pipewire-0.3
+  export SDL_AUDIODRIVER=pipewire,alsa,dsp
+else
+  # MinUI and friends: no 32-bit PipeWire, plain ALSA through the default PCM.
+  unset SPA_PLUGIN_DIR PIPEWIRE_MODULE_DIR
+  export SDL_AUDIODRIVER=alsa
+fi
 
 # Audio diagnostics for log.txt while we chase the silence bug
 echo "--- audio diag ---"
