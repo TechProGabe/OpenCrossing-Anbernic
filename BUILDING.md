@@ -26,6 +26,22 @@ Always verify the container arch:
 docker run --rm --platform linux/arm/v7 debian:bookworm uname -m   # must print: armv7l
 ```
 
+## Device build on Windows (no Docker or WSL)
+
+```powershell
+pip install cmake ninja
+python pc/tools/build_windows.py
+```
+
+The first run downloads about 260 MB into `pc/build-toolchain/`: Arm's
+GCC 12.2 for Windows (armhf target, glibc 2.36) and SDL2/GLES from Debian
+bookworm armhf. Those match the Docker build above, so the binary is the same
+kind CI ships. Every download is checked against a SHA-256.
+
+Output: `pc/build-armhf-win/bin/AnimalCrossing`. Rebuilds are incremental;
+`--clean` starts over and `--jobs N` sets parallelism. It can't run the
+binary, so boot-test on the device or with the Docker harness.
+
 ## Desktop dev build (macOS / Linux)
 
 ```bash
