@@ -28,6 +28,7 @@ SDL_GLContext  g_pc_gl_context = NULL;
 int           g_pc_running = 1;
 int           g_pc_no_framelimit = 0;
 int           g_pc_verbose = 0;
+int           g_pc_audio_debug = 0; /* PC_AUDIO_DEBUG=1: per-frame sound-trigger logs */
 int           g_pc_time_override = -1; /* -1=system clock, 0-23=override hour */
 int           g_pc_min_override = -1; /* -1=system clock, 0-59=override minute */
 int           g_pc_sec_override = -1; /* -1=system clock, 0-59=override second */
@@ -684,6 +685,10 @@ int main(int argc, char* argv[]) {
     printf("[PC] Image range: 0x%08X - 0x%08X\n", pc_image_base, pc_image_end);
 
     SDL_SetMainReady();
+    {
+        const char* ad = getenv("PC_AUDIO_DEBUG");
+        g_pc_audio_debug = ad != NULL && ad[0] == '1';
+    }
     pc_settings_load();
 
     /* Merge verbose: CLI --verbose or settings.ini verbose=1 */
@@ -699,7 +704,13 @@ int main(int argc, char* argv[]) {
         freopen("/dev/null", "w", stdout);
 #endif
     } else {
-        setvbuf(stdout, NULL, _IONBF, 0);
+        /* Buffered, flushed once a second by pc_vi.c: an unbuffered
+         * stdout made every line a write() to the SD card, and when the
+         * card's writeback fell behind the game stalled for seconds
+         * (hardware test 3: 3.1 s). stderr stays unbuffered: errors
+         * and crash reports are rare and must not be lost. */
+        static char s_stdout_buf[64 * 1024];
+        setvbuf(stdout, s_stdout_buf, _IOFBF, sizeof(s_stdout_buf));
         setvbuf(stderr, NULL, _IONBF, 0);
     }
 

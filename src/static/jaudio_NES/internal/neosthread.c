@@ -43,10 +43,12 @@ extern u32 Neos_Update(s16* dst) {
         Jac_bzero(dst, DAC_SIZE * 2);
     }
 
-    /* Diagnostic: check NEOS output amplitude every 60 frames */
+    /* Diagnostic: check NEOS output amplitude every 60 frames
+     * (PC_AUDIO_DEBUG=1 only, see game64.c_inc) */
     {
+        extern int g_pc_audio_debug;
         static u32 neos_diag_ctr = 0;
-        if ((neos_diag_ctr++ % 60) == 0) {
+        if (g_pc_audio_debug && (neos_diag_ctr++ % 60) == 0) {
             s32 peak = 0;
             for (u32 i = 0; i < DAC_SIZE; i++) {
                 s32 v = dst[i];

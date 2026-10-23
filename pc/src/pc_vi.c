@@ -187,6 +187,7 @@ void VIWaitForRetrace(void) {
                      render_fps, speed_pct, pc_gx_draw_call_count);
             SDL_SetWindowTitle(g_pc_window, title);
             pc_overlay_update(render_fps, speed_pct);
+            fflush(stdout); /* verbose log: one write a second */
 
             if (g_pc_verbose) {
                 extern int pc_emu64_frame_cmds, pc_emu64_frame_crashes;
