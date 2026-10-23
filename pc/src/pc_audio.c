@@ -144,6 +144,16 @@ static s16 nes_ring[NES_RING_SAMPLES];
 static SDL_atomic_t nes_write_pos;
 static SDL_atomic_t nes_read_pos;
 
+/* Mixing starts once this much NES audio is queued (~33ms) and stops when
+ * the queue runs dry, so frame-time jitter doesn't turn into gaps. */
+#define NES_PRIME_SAMPLES (1066 * 2)
+static int nes_primed; /* audio thread only */
+
+/* Queued NES samples (stereo s16 count), for the producer's rate control. */
+u32 pc_audio_nes_fill(void) {
+    return (u32)SDL_AtomicGet(&nes_write_pos) - (u32)SDL_AtomicGet(&nes_read_pos);
+}
+
 void pc_audio_nes_push(const s16* src, u32 n_samples) {
     u32 wp = (u32)SDL_AtomicGet(&nes_write_pos);
     u32 rp = (u32)SDL_AtomicGet(&nes_read_pos);
@@ -181,6 +191,14 @@ void AIInitDMA(u32 addr, u32 size) {
     u32 nrp = (u32)SDL_AtomicGet(&nes_read_pos);
     SDL_MemoryBarrierAcquire();
     u32 nes_avail = nwp - nrp;
+    if (!nes_primed && nes_avail >= NES_PRIME_SAMPLES) {
+        nes_primed = 1;
+    } else if (nes_primed && nes_avail == 0) {
+        nes_primed = 0; /* game left NES, or stalled: build up again */
+    }
+    if (!nes_primed) {
+        nes_avail = 0;
+    }
     if (nes_avail > n_samples) {
         nes_avail = n_samples;
     }

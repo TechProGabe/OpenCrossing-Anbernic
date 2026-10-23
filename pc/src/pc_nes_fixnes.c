@@ -91,6 +91,7 @@ extern uint8_t inValReads[8];
 /* Audio output: pc_audio.c mixes these into the game's stream on its
  * producer thread (only that thread may write the output ring). */
 extern void pc_audio_nes_push(const int16_t* src, uint32_t n_samples);
+extern uint32_t pc_audio_nes_fill(void);
 
 /* ======================================================================
  * GL rendering state
@@ -205,20 +206,45 @@ static void fixnes_capture_audio(void) {
     int16_t *src = (int16_t *)raw;
     int num_frames = buf_size / (2 * sizeof(int16_t)); /* stereo frames */
 
-    /* Downsample from fixNES APU frequency to game's 32kHz audio output */
+    /* Resample this NES frame's APU output to the game's 32 kHz stream.
+     * 32000/60 is 533.33, so carry the remainder to make it exact on
+     * average, then nudge by up to 8 frames (1.5%, inaudible) to hold the
+     * mixer's queue near ~2 frames: the game thread and the audio device
+     * run on different clocks, and an empty queue is an audible gap. */
     #define FIXNES_OUTPUT_RATE 32000
-    int target_frames = FIXNES_OUTPUT_RATE / 60;
+    #define FIXNES_QUEUE_TARGET (1066 * 2) /* stereo samples, ~2 frames */
+    static int rate_rem = 0;
+    int target_frames;
+    {
+        int queued = (int)pc_audio_nes_fill();
+        int adjust = (FIXNES_QUEUE_TARGET - queued) / 64;
+
+        rate_rem += FIXNES_OUTPUT_RATE;
+        target_frames = rate_rem / 60;
+        rate_rem -= target_frames * 60;
+        if (adjust > 8) adjust = 8;
+        if (adjust < -8) adjust = -8;
+        target_frames += adjust;
+    }
     if (target_frames > FIXNES_AUDIO_BUF_SIZE)
         target_frames = FIXNES_AUDIO_BUF_SIZE;
 
+    /* Linear interpolation (16.16 fixed point): nearest-sample picking
+     * aliases the square waves into a rough, gritty sound. */
     fixnes_audio_pos = 0;
-    if (num_frames > 0) {
+    if (num_frames > 1 && target_frames > 0) {
+        uint32_t step = (uint32_t)(((uint64_t)(num_frames - 1) << 16) / (uint32_t)target_frames);
+        uint32_t pos = 0;
         for (int i = 0; i < target_frames; i++) {
-            int src_frame = (int)((int64_t)i * num_frames / target_frames);
-            if (src_frame >= num_frames) src_frame = num_frames - 1;
-            fixnes_audio_buf[fixnes_audio_pos * 2 + 0] = src[src_frame * 2 + 0]; /* L */
-            fixnes_audio_buf[fixnes_audio_pos * 2 + 1] = src[src_frame * 2 + 1]; /* R */
+            int s0 = (int)(pos >> 16);
+            int frac = (int)(pos & 0xFFFF);
+            int s1 = s0 + 1 < num_frames ? s0 + 1 : s0;
+            for (int ch = 0; ch < 2; ch++) {
+                int a = src[s0 * 2 + ch], b = src[s1 * 2 + ch];
+                fixnes_audio_buf[fixnes_audio_pos * 2 + ch] = (int16_t)(a + (int)(((int64_t)(b - a) * frac) >> 16));
+            }
             fixnes_audio_pos++;
+            pos += step;
         }
     }
 
