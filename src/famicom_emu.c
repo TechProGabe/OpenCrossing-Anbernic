@@ -92,6 +92,16 @@ extern void famicom_emu_main(GAME* famicom) {
             famicom_done = TRUE;
             famicom_done_countdown = 0;
         } else {
+#ifdef TARGET_PC
+            /* fixNES couldn't start this game (Clu Clu Land D is a disk
+             * image, or out of memory): back to the room, not a black screen */
+            extern int pc_fixnes_failed(void);
+            if (pc_fixnes_failed()) {
+                OSReport("[NES] this game can't run here: back to the room\n");
+                famicom_done = TRUE;
+                famicom_done_countdown = 0;
+            }
+#endif
             for (padid = 0; padid < 4; padid++) {
                 current_pad = &gamePT->pads[padid];
                 combo = current_pad->now.button | current_pad->on.button;
@@ -137,6 +147,10 @@ extern void famicom_emu_init(GAME* game) {
     int debug;
     void* manager;
     const GXRenderModeObj* render;
+
+#ifdef TARGET_PC
+    { extern int g_pc_nes_active; g_pc_nes_active = 1; }
+#endif
 
     famicom_done = FALSE;
     famicom_done_countdown = 0;
@@ -208,6 +222,10 @@ extern void famicom_emu_cleanup(GAME* game) {
         freeXfbSize = 0;
     }
     sAdo_SubGameEnd();
+
+#ifdef TARGET_PC
+    { extern int g_pc_nes_active; g_pc_nes_active = 0; }
+#endif
 }
 
 extern void* famicom_gba_getImage(u32 rom_id, size_t* size) {

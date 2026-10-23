@@ -148,8 +148,9 @@
 
 ## Port limitations (by design — answer reports with these, don't reopen)
 
-- **NES/famicom furniture always says "I don't have any software"**
-  (2026-07-19, upstream Dia2809/ACGC-PC-Port#29 + our user report "SNES
+- **NES/famicom furniture always said "I don't have any software"**
+  (RESOLVED on dev 2026-10-23: fixNES backport, see kb/game.md. History
+  below.) (2026-07-19, upstream Dia2809/ACGC-PC-Port#29 + our user report "SNES
   only spawning Donkey Kong / game not working"): the GC NES core
   (src/static/Famicom/ks_nes_core.cpp — `ksNesResetAsm`,
   `ksNesEmuFrameAsm`) is PowerPC inline assembly; it cannot build for

@@ -519,6 +519,15 @@ void pc_gx_begin_frame(void) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
+/* 1 while an NES game runs (famicom_emu.c). fixNES draws straight to the
+ * window, so the render-FBO copy in pc_gx_blit_to_screen must not cover it. */
+int g_pc_nes_active = 0;
+
+/* Draw any batch the game left open before fixNES takes over GL. */
+void pc_gx_draw_pending(void) {
+    pc_gx_commit_pending_and_flush();
+}
+
 void pc_gx_restore_after_nes(void) {
     /* NES emulator uses its own shader/VAO/state. Rebind the game's GL objects
      * and mark all GX state dirty so uniforms/textures get re-uploaded. */
@@ -553,6 +562,7 @@ void pc_gx_shutdown(void) {
 void pc_gx_blit_to_screen(void) {
 #ifdef PC_ENHANCEMENTS
     if (!s_render_fbo) return;  /* rendering directly to default FB, nothing to do */
+    if (g_pc_nes_active) return; /* fixNES already drew this frame to the window */
 
     /* Bind default framebuffer as draw target */
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);

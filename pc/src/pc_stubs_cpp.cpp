@@ -32,3 +32,11 @@ void JKRHeap::destroy() {}
 JKRTask::Request* JKRTask::searchBlank() {
     return nullptr;
 }
+
+/* famicom.cpp still references the GameCube NES core's frame entry (C++
+ * linkage). ks_nes_core.cpp is PPC asm and compiled out; fixNES runs instead. */
+#include "Famicom/ks_nes_core.h"
+
+void ksNesEmuFrame(ksNesCommonWorkObj* wp, ksNesStateObj* sp, u32 flags) {
+    (void)wp; (void)sp; (void)flags;
+}

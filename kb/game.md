@@ -23,13 +23,21 @@
   tabs: VIDEO/AUDIO/CTRL/DEBUG/PERF — menu item↔tab mapping in
   pc_overlay.c `menu_item_tab[]`.
 - Model viewer debug mode: `--model-viewer [index]`.
-- Built-in NES emulator: NOT implemented on PC — `ac_my_room.c:2111`
-  `#ifdef TARGET_PC` stubs all famicom furniture to the "no software"
-  message (kb/issues.md 2026-07-19). `pc_gx_restore_after_nes()`
-  (pc_gx.c:522) is uncalled scaffolding; if an NES core is ever wired in
-  with its own GL objects, call it after the emu runs — it rebinds ours
-  and dirties all state, and any new global GL state must be handled
-  there too.
+- NES furniture runs on fixNES (pc/lib/fixnes, MIT), backported from
+  flyngmt/ACGC-PC-Port v0.9.3 plus OpenCrossing-Xbox fixes (2026-10-23).
+  Glue is pc/src/pc_nes_fixnes.c; famicom.cpp keeps the game's menus,
+  saves and ROM loading and calls `pc_fixnes_*` under TARGET_PC (the GC
+  core ks_nes_core is PPC asm, compiled out). fixNES draws its own quad
+  straight to framebuffer 0; `g_pc_nes_active` (pc_gx.c) makes
+  pc_gx_blit_to_screen skip the render-FBO copy so it isn't covered, and
+  `pc_fixnes_cleanup` calls `pc_gx_restore_after_nes()` to rebind our GL
+  state. Built without COL_TEX_BSWAP so the frame is plain RGB565
+  (GLES has no 5_6_5_REV). No include dir for fixNES: its audio.h would
+  shadow the game's. Exit = L+R+Z (L1+R2+R1 on the handhelds). Saves:
+  save/card_{a,b}/DobutsunomoriP_F_SAVE.sav; empty NES item reads
+  ./nes_roms/*.nes. Clu Clu Land D (FDS) goes back to the room.
+  NOT yet device-tested: check fps (fixNES is ~13 ms/frame on Xbox's
+  733 MHz P3), audio, the 4:3 pillarbox, and render scale < 1.
 - **Campsite villagers cannot move in — by design** (verified in source
   2026-07-19 after a player report of talking/playing games for an hour
   with no move-in offer): the camper is special NPC type 0xD05E

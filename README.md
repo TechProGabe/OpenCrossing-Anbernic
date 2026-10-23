@@ -59,7 +59,7 @@ When reporting a bug, attach `ports/ac-gc/log.txt`. It gets rewritten every laun
 ## FAQ
 
 **Do the NES games work?**
-No. The NES emulator inside the original game is PowerPC assembly, which can't run here. Every NES furniture item says it has no software. Everything else in the furniture catalog works.
+Yes, on `dev` builds and from the next release. The original game's emulator is PowerPC assembly, so the port runs the games with [fixNES](https://github.com/FIX94/fixNES) instead. Hold L1, R1 and R2 to go back to your room. High scores save. Clu Clu Land D is a Famicom Disk System game and won't start. The plain NES item plays `.nes` files you put in `ports/ac-gc/nes_roms/`.
 
 **The gyroid at my door says "I am currently processing data" and won't save. Is saving broken?**
 No. That's the gyroid saying no, same as on GameCube. Finish Nook's part-time job or chat with villagers until one remembers you, and saving unlocks. If a save really fails, the log will have a `GCI save:` line saying why.
@@ -99,6 +99,7 @@ The binary ends up at `pc/build-armhf/bin/AnimalCrossing`. On Windows you can sk
 - **[ACreTeam/ac-decomp](https://github.com/ACreTeam/ac-decomp)**, the full C decompilation of Animal Crossing. None of this exists without it.
 - **[flyngmt/ACGC-PC-Port](https://github.com/flyngmt/ACGC-PC-Port)**, the original PC port and its GX to OpenGL layer.
 - **[Dia2809/ACGC-PC-Port](https://github.com/Dia2809/ACGC-PC-Port)**, which added Linux support, the OpenGL ES renderer and the ARM branches this project started from.
+- **[FIX94/fixNES](https://github.com/FIX94/fixNES)**, the NES emulator behind the NES furniture.
 
 AI tools (Claude) helped with the porting and optimization work. That covers platform code only, not the decompiled game code.
 
