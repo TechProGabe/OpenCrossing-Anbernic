@@ -208,22 +208,33 @@ static void fixnes_capture_audio(void) {
 
     /* Resample this NES frame's APU output to the game's 32 kHz stream.
      * 32000/60 is 533.33, so carry the remainder to make it exact on
-     * average, then nudge by up to 8 frames (1.5%, inaudible) to hold the
-     * mixer's queue near ~2 frames: the game thread and the audio device
-     * run on different clocks, and an empty queue is an audible gap. */
+     * average. The screen and the audio device run on slightly different
+     * clocks, so the mixer's queue drifts slowly; correct that gently.
+     *
+     * The queue is read while the audio thread pulls from it in chunks of
+     * several hundred samples, so one reading swings by a chunk. Reacting
+     * to that (up to 1.5% every frame) warbled the pitch: "skipping, like a
+     * minor scale" (hardware test 7). So: average the readings, ignore
+     * errors under ~1.5 frames, and correct by 1-2 samples a frame at most
+     * (under 0.4%, inaudible). */
     #define FIXNES_OUTPUT_RATE 32000
     #define FIXNES_QUEUE_TARGET (1066 * 2) /* stereo samples, ~2 frames */
+    #define FIXNES_QUEUE_DEADBAND 1600     /* stereo samples, ~1.5 frames */
     static int rate_rem = 0;
+    static float queue_avg = (float)FIXNES_QUEUE_TARGET;
     int target_frames;
     {
-        int queued = (int)pc_audio_nes_fill();
-        int adjust = (FIXNES_QUEUE_TARGET - queued) / 64;
+        float err;
+        int adjust = 0;
+
+        queue_avg += ((float)pc_audio_nes_fill() - queue_avg) * (1.0f / 32.0f);
+        err = (float)FIXNES_QUEUE_TARGET - queue_avg;
+        if (err > FIXNES_QUEUE_DEADBAND) adjust = err > 2 * FIXNES_QUEUE_DEADBAND ? 2 : 1;
+        else if (err < -FIXNES_QUEUE_DEADBAND) adjust = err < -2 * FIXNES_QUEUE_DEADBAND ? -2 : -1;
 
         rate_rem += FIXNES_OUTPUT_RATE;
         target_frames = rate_rem / 60;
         rate_rem -= target_frames * 60;
-        if (adjust > 8) adjust = 8;
-        if (adjust < -8) adjust = -8;
         target_frames += adjust;
     }
     if (target_frames > FIXNES_AUDIO_BUF_SIZE)
