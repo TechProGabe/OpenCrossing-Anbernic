@@ -41,9 +41,18 @@
   `pc_audio_nes_push` (own SPSC ring) and AIInitDMA mixes them in.
   NOT yet device-tested: check fps (fixNES is ~13 ms/frame on Xbox's
   733 MHz P3), audio, the 4:3 pillarbox, and render scale < 1.
-- PC gameplay settings (GAME tab, pc_overlay.c): borderless_acres
+- Options page (pc_settings_menu.c, from OpenCrossing-Xbox): one page
+  for the title screen's Options and Select in game. In game,
+  pc_pause_menu.c sets g_pc_paused (m_play.c Game_play_move returns
+  early, PADRead goes quiet, graph.c draws the page after game_main),
+  then drains the closing buttons. Blocked while an NES game runs or
+  the title menu is up (g_pc_title_main_menu_visible). Drawn in the
+  font display list; strings may not use / + * [ ; # (no glyphs).
+  The old GL overlay menu is gone (pc_overlay.c keeps the FPS counter,
+  loading screen and boot error screen).
+- PC gameplay settings (Game tab): borderless_acres
   (endless acres, default 1, `g_mPlib_wade_disabled`), bells_to_wallet
-  (default 0, m_player_main_pickup.c_inc), shop_no_visitor (default 1,
+  (default 1 since the 2026-10-23 hardware test, m_player_main_pickup.c_inc), shop_no_visitor (default 1,
   mSP_GetRealShopLevel; the visitor check was dropped unconditionally
   in Dia's 89061f5, so 1 keeps old behaviour), disable_resetti.
 - **Campsite villagers cannot move in — by design** (verified in source
