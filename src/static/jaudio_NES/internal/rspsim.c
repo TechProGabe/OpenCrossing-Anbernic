@@ -567,10 +567,15 @@ extern s32 RspStart(u32* pTaskCmds, s32 allTasks) {
                     if ((j & 3) == 3) {
 #ifdef TARGET_PC
                         { /* Clamp volume ramp to u16 range — real DSP saturates,
-                           * C unsigned arithmetic wraps causing volume spikes. */
-                            s32 t0 = (s32)envParam2_0 + envParam1_2;
-                            s32 t1 = (s32)envParam2_1 + envParam1_1;
-                            s32 t2 = (s32)envParam1_0 + envParam1_3;
+                           * C unsigned arithmetic wraps causing volume spikes.
+                           * Pairing per aEnvSetup1(reverbVol, rampReverb,
+                           * rampLeft, rampRight): the decomp had the right and
+                           * reverb ramps swapped (fixed upstream in
+                           * flyngmt/ACGC-PC-Port f3134b5). Ramps are s16, so
+                           * fades down still work with the clamp. */
+                            s32 t0 = (s32)envParam2_0 + envParam1_2; /* left += rampLeft */
+                            s32 t1 = (s32)envParam2_1 + envParam1_3; /* right += rampRight */
+                            s32 t2 = (s32)envParam1_0 + envParam1_1; /* reverb += rampReverb */
                             if (t0 < 0) t0 = 0; else if (t0 > 0xFFFF) t0 = 0xFFFF;
                             if (t1 < 0) t1 = 0; else if (t1 > 0xFFFF) t1 = 0xFFFF;
                             if (t2 < 0) t2 = 0; else if (t2 > 0xFFFF) t2 = 0xFFFF;
