@@ -704,7 +704,9 @@ static int pc_save_read_gci_to_keep(const char* path) {
             OSReport("[PC] Card B: mail block failed checksum — using empty block\n");
             memset(&l_keepMail, 0, sizeof(l_keepMail));
         } else {
-            memcpy(&l_keepMail, others_ptr + off_mail, mail_size);
+            /* mail_size is 32-byte rounded for the on-card layout; the
+             * struct is smaller, so copy only what it holds. */
+            memcpy(&l_keepMail, others_ptr + off_mail, sizeof(l_keepMail));
             pc_save_bswap_keep_mail(&l_keepMail, PC_BSWAP_FROM_BE);
         }
 
@@ -712,7 +714,7 @@ static int pc_save_read_gci_to_keep(const char* path) {
             OSReport("[PC] Card B: original-designs block failed checksum — using empty block\n");
             memset(&l_keepOriginal, 0, sizeof(l_keepOriginal));
         } else {
-            memcpy(&l_keepOriginal, others_ptr + off_orig, orig_size);
+            memcpy(&l_keepOriginal, others_ptr + off_orig, sizeof(l_keepOriginal));
             pc_save_bswap_keep_original(&l_keepOriginal, PC_BSWAP_FROM_BE);
         }
 
@@ -722,7 +724,7 @@ static int pc_save_read_gci_to_keep(const char* path) {
             memset(&l_keepDiary, 0, sizeof(l_keepDiary));
             pc_init_diary_entries(&l_keepDiary);
         } else {
-            memcpy(&l_keepDiary, others_ptr + off_diary, l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
+            memcpy(&l_keepDiary, others_ptr + off_diary, sizeof(l_keepDiary));
             pc_save_bswap_keep_diary(&l_keepDiary, PC_BSWAP_FROM_BE);
         }
     }
@@ -1380,9 +1382,10 @@ void mCD_toNextLand(void) {
     l_keepSave_set = FALSE;
 
     /* Load ARAM blocks from the other town */
-    mCD_save_data_main_to_aram(&l_keepMail, l_aram_alloc_size_table[mCD_ARAM_DATA_MAIL], mCD_ARAM_DATA_MAIL);
-    mCD_save_data_main_to_aram(&l_keepOriginal, l_aram_alloc_size_table[mCD_ARAM_DATA_ORIGINAL], mCD_ARAM_DATA_ORIGINAL);
-    mCD_save_data_main_to_aram(&l_keepDiary, l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY], mCD_ARAM_DATA_DIARY);
+    /* Real struct sizes: the 32-byte-rounded table sizes read past them. */
+    mCD_save_data_main_to_aram(&l_keepMail, sizeof(l_keepMail), mCD_ARAM_DATA_MAIL);
+    mCD_save_data_main_to_aram(&l_keepOriginal, sizeof(l_keepOriginal), mCD_ARAM_DATA_ORIGINAL);
+    mCD_save_data_main_to_aram(&l_keepDiary, sizeof(l_keepDiary), mCD_ARAM_DATA_DIARY);
 
     OSReport("[PC] toNextLand: transitioned to visited town, player_no=%d\n",
              Common_Get(player_no));
