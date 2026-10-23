@@ -18,7 +18,12 @@
   block=(x,z) unit=(x,z)` logs every wade placement — compare against
   the pool block on the town map.
 
-- **Green diary furniture renders hot pink (missing-texture magenta)**
+- **Green diary furniture renders hot pink** — FIXED on dev 2026-10-23
+  (412e8cd): 15 u8-declared palettes were loaded without the u16 swap
+  every Dolphin TLUT needs (emu64 marks the slot native LE), so they
+  decoded byte-reversed. Confirmed by decoding the diary palettes from
+  the GAFE01 disc both ways. gen_runtime_assets.py now swaps anything
+  gsDPLoadTLUT_Dolphin loads. Device check pending. Original notes:
   (2026-07-19 user report): one diary recolor ("listed as green") draws in
   the placeholder pink used for graphical glitches; other recolors fine.
   Furniture recolors share one texture and differ by TLUT palette, so the
@@ -139,7 +144,8 @@
   worst were the 24 mid-session shader compiles — fixed by 101-config
   seed (kb/perf.md #12).
 
-- **Log noise: `[PC] toNextLand: l_keepSave not set, aborting`** (2026-07-29,
+- **Log noise: `[PC] toNextLand: l_keepSave not set, aborting`** — FIXED
+  on dev 2026-10-23 (line removed). (2026-07-29,
   cosmetic). `mCD_toNextLand` (pc/src/pc_m_card.c:1242) runs on every play-scene
   teardown (`m_play.c:393`), not just travel, so this line appears once per
   scene change in every device log — it looks alarming in user-submitted logs

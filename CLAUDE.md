@@ -45,15 +45,20 @@ Keep kb/ files updated when the facts change — they are the project memory.
 # device build (output: pc/build-armhf/bin/AnimalCrossing)
 docker run --rm --platform linux/arm/v7 -v "$PWD":/work \
   debian:bookworm bash /work/pc/build-armhf-docker.sh
+# same binary from Windows, no Docker (output: pc/build-armhf-win/bin/)
+python pc/tools/build_windows.py
 # boot test with rom
 ./harness/smoke.sh armhf
 # deploy (SD card mounted as ROMS)
 cp pc/build-armhf/bin/AnimalCrossing "/Volumes/ROMS/ports/ac-gc/AnimalCrossing" && sync
 ```
 
-## Status (2026-07-13)
+## Status (2026-10-23)
 
-Works on device: rendering, controls, saves, audio. Two perf passes done
-(see kb/perf.md). Second pass (dev branch: -O2 for game code + NEON, NEON
-decoders, decode budget, draw-call merging) is **awaiting device testing** —
-README carries a "not tested end-to-end" notice until a full playthrough.
+v0.5.0 is the latest release (main). dev carries a large untested batch:
+NES on fixNES, endless acres, upstream bug fixes, save/travel fixes,
+BUGFIXES, the pink-palette fix, a crash reporter, GAME-tab settings and
+D-pad navigation (kb/history.md 2026-10-23). Everything compiles for
+armhf; **none of it has run on a device yet** — do a hardware pass
+before tagging v0.6.0. A GAFE01 disc image for data checks is the Xbox
+port's CISO on the NAS (P:/AC-Xbox/...); never copy it into the repo.
