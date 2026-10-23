@@ -3,6 +3,7 @@
 #include "pc_settings.h"
 #include "pc_typing.h"
 #include "pc_keybindings.h"
+#include "pc_pause_menu.h"
 #include <dolphin/pad.h>
 
 /* analog stick constants */
@@ -66,8 +67,8 @@ BOOL PADInit(void) {
 u32 PADRead(PADStatus* status) {
     memset(status, 0, sizeof(PADStatus) * 4);
 
-    /* Suppress all game input while settings menu is open */
-    if (g_pc_menu_open) {
+    /* Suppress all game input while the in-game Options page is open */
+    if (g_pc_paused) {
         status[0].err = 0;
         return PAD_CHAN0_BIT;
     }
@@ -267,6 +268,18 @@ u32 PADRead(PADStatus* status) {
         if (buttons & PAD_BUTTON_UP)    stickY =  STICK_MAGNITUDE;
         /* Consume dpad — don't also send PAD_BUTTON_* to game */
         buttons &= ~(PAD_BUTTON_LEFT | PAD_BUTTON_RIGHT | PAD_BUTTON_UP | PAD_BUTTON_DOWN);
+    }
+
+    /* After the Options page closes, hide the buttons that closed it until
+     * they're released, so they don't land in the game. Buttons only:
+     * stick drift could keep it waiting forever. */
+    if (g_pc_pause_input_drain) {
+        if (buttons != 0) {
+            buttons = 0;
+            stickX = stickY = cstickX = cstickY = 0;
+        } else {
+            g_pc_pause_input_drain = 0;
+        }
     }
 
     status[0].button = buttons;

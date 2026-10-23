@@ -7,6 +7,7 @@
 #include "pc_assets.h"
 #include "pc_disc.h"
 #include "pc_overlay.h"
+#include "pc_pause_menu.h"
 #include "pc_typing.h"
 
 #ifndef _WIN32
@@ -395,9 +396,10 @@ void pc_platform_init(void) {
     /* Overlay first so the boot splash can render before the slow parts of
      * startup (shader cache preload, texture pack, disc asset loading). */
     pc_overlay_init();
-    pc_overlay_boot_splash("LOADING...");
+    pc_overlay_boot_progress(0.05f, "Warming up the shaders");
 
     pc_gx_init();
+    pc_overlay_boot_progress(0.30f, "Looking for texture packs");
     pc_texture_pack_init();
 #ifdef PC_ENHANCEMENTS
     if (g_pc_settings.preload_textures) {
@@ -488,6 +490,18 @@ int pc_platform_poll_events(void) {
     pc_typing_update();
 
     while (SDL_PollEvent(&event)) {
+        /* Select (Back) and Tab open or close the in-game Options page;
+         * while it's open it takes every key and button. */
+        if ((event.type == SDL_CONTROLLERBUTTONDOWN &&
+             event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) ||
+            (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_TAB &&
+             !event.key.repeat)) {
+            pc_pause_menu_toggle();
+            continue;
+        }
+        if (pc_pause_menu_handle_event(&event)) {
+            continue;
+        }
         switch (event.type) {
             case SDL_QUIT:
                 if (pc_confirm_quit()) {
@@ -511,18 +525,10 @@ int pc_platform_poll_events(void) {
                     g_pc_no_framelimit ^= 1;
                     printf("[PC] Frame limiter %s\n", g_pc_no_framelimit ? "OFF" : "ON");
                 }
-                if (event.key.keysym.sym == SDLK_TAB && !event.key.repeat) {
-                    pc_overlay_menu_toggle();
-                }
                 pc_typing_handle_event(&event);
                 break;
             case SDL_TEXTINPUT:
                 pc_typing_handle_event(&event);
-                break;
-            case SDL_CONTROLLERBUTTONDOWN:
-                if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
-                    pc_overlay_menu_toggle();
-                }
                 break;
         }
     }
@@ -700,7 +706,8 @@ int main(int argc, char* argv[]) {
     pc_keybindings_load();
     pc_platform_init();
     pc_check_disc_or_die();
-    pc_assets_init();
+    pc_assets_init(); /* reports its own progress */
+    pc_overlay_boot_progress(1.0f, "Starting the game");
 
     ac_entry();                         /* sets HotStartEntry = &entry */
     boot_main(argc, (const char**)argv); /* full init → HotStartEntry → game loop */

@@ -62,7 +62,7 @@ struct actor_animal_logo_s {
   int titledemo_no;
 
 #ifdef PC_ENHANCEMENTS
-  int pc_menu_sel;         /* 0=Start Game, 1=Options */
+  int pc_menu_sel;         /* 0=Start Game, 1=Options, 2=Exit to OS */
   int pc_options_open;     /* options sub-menu visible */
   int pc_options_sel;      /* highlighted option (unused for now) */
   int pc_cursor_cooldown;  /* stick debounce timer */

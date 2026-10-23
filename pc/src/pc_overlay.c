@@ -1,8 +1,8 @@
-/* pc_overlay.c - FPS counter + in-game settings menu with embedded bitmap font */
+/* pc_overlay.c - FPS counter, boot splash and boot error screen, drawn with an
+ * embedded bitmap font. (Settings live in pc_settings_menu.c.) */
 #include "pc_platform.h"
 #include "pc_overlay.h"
 #include "pc_settings.h"
-#include "pc_keybindings.h"
 
 /* ---- Vertex type ---- */
 typedef struct { float x, y, u, v, r, g, b, a; } OvVtx;
@@ -15,486 +15,15 @@ static GLuint ov_vao = 0;
 static GLuint ov_vbo = 0;
 static GLuint ov_tex = 0;
 static GLint  ov_loc_font = -1;
+static GLint  ov_loc_rgba = -1;
+
+/* ---- Boot splash logo (portmaster/ac-gc/res/splash_logo.bin) ---- */
+static GLuint ov_logo_tex = 0;
+static int    ov_logo_w = 0, ov_logo_h = 0;
 
 /* ---- FPS state ---- */
 static double ov_fps   = 60.0;
 static double ov_speed = 100.0;
-
-/* ---- Menu state ---- */
-int g_pc_menu_open = 0;
-static int menu_cursor = 0;
-
-/* Input repeat: initial delay then fast repeat */
-static int rep_up = 0, rep_down = 0, rep_left = 0, rep_right = 0;
-#define REP_DELAY  16  /* frames before repeat starts */
-#define REP_RATE    3  /* frames between repeats */
-
-/* ---- Controls tab: scroll + keybind capture ---- */
-#define CTRL_VISIBLE_ROWS 8
-static int   ctrl_scroll       = 0;   /* scroll offset within Controls tab */
-static int   ctrl_capture_idx  = -1;  /* index into KB_COUNT being captured, -1 = none */
-static Uint32 ctrl_capture_start = 0; /* SDL_GetTicks() when capture started */
-#define CTRL_CAPTURE_MS 3000
-static Uint8 s_prev_keys[SDL_NUM_SCANCODES];              /* previous-frame keyboard state for edge detection */
-static Uint8 s_prev_gamepad[SDL_CONTROLLER_BUTTON_MAX];   /* previous-frame gamepad button state */
-static int   s_prev_ctrl_a = 0;                           /* gamepad A button last frame (for enter-capture edge) */
-static Uint32 ctrl_clear_start  = 0;  /* SDL_GetTicks() when X/Del hold started on a KB item, 0 = not held */
-static int    ctrl_clear_kb_idx = -1; /* which kb_idx is being held for clear */
-#define CTRL_CLEAR_MS 1500            /* hold this long to clear a binding */
-
-/* ---- Menu items ---- */
-enum {
-    MI_FPS_COUNTER,
-    MI_MASTER_VOLUME,
-    MI_BGM_VOLUME,
-    MI_SFX_VOLUME,
-    MI_VOICE_VOLUME,
-    MI_FULLSCREEN,
-    MI_VSYNC,
-    MI_MSAA,
-    MI_ZOOM_ENABLED,
-    MI_ENDLESS_ACRES,
-    MI_FPS_TARGET,
-    MI_RENDER_SCALE,
-    MI_WINDOW_SIZE,
-    MI_SCALE_MODE,
-    MI_VERBOSE,
-    /* Controls tab */
-    MI_CTRL_SWAP_AB,
-    MI_CTRL_DPAD_STICK,
-    MI_LEFT_DEADZONE,
-    MI_RIGHT_DEADZONE,
-    MI_CTRL_RESET,
-    /* Perf tab */
-    MI_FRUSTUM_CULL,
-    MI_CULL_Z_MARGIN,
-    MI_CULL_MAX_DISTANCE,
-    MI_SHADOW_QUALITY,
-    MI_REDUCE_ACRE_DRAW,
-    MI_PARTICLE_QUALITY,
-    MI_PRELOAD_TEXTURES,
-    MI_DISABLE_RESETTI,
-    MI_BELLS_TO_WALLET,
-    MI_SHOP_NO_VISITOR,
-    MI_NES_ASPECT,
-    MI_KB_BASE,
-    MI_COUNT = MI_KB_BASE + KB_COUNT,
-};
-
-/* Labels for non-KB items; KB items use pc_keybinding_label() at draw time */
-static const char* menu_labels[MI_COUNT] = {
-    [MI_FPS_COUNTER]     = "FPS Counter",
-    [MI_MASTER_VOLUME]   = "Master Volume",
-    [MI_BGM_VOLUME]      = "Music",
-    [MI_SFX_VOLUME]      = "Sound Effects",
-    [MI_VOICE_VOLUME]    = "Voices",
-    [MI_FULLSCREEN]      = "Fullscreen",
-    [MI_VSYNC]           = "V-Sync",
-    [MI_MSAA]            = "MSAA",
-    [MI_ZOOM_ENABLED]    = "Camera Zoom",
-    [MI_ENDLESS_ACRES]   = "Endless Acres",
-    [MI_FPS_TARGET]      = "FPS Target",
-    [MI_RENDER_SCALE]    = "Render Scale",
-    [MI_WINDOW_SIZE]     = "Render Res",
-    [MI_SCALE_MODE]      = "Scale Mode",
-    [MI_VERBOSE]         = "Verbose Log",
-    [MI_CTRL_SWAP_AB]       = "Swap A/B, X/Y",
-    [MI_CTRL_DPAD_STICK]    = "Dpad as Joystick",
-    [MI_LEFT_DEADZONE]      = "L-Stick Deadzone",
-    [MI_RIGHT_DEADZONE]     = "R-Stick Deadzone",
-    [MI_CTRL_RESET]         = "Reset Defaults",
-    [MI_FRUSTUM_CULL]       = "Distance cull",
-    [MI_CULL_Z_MARGIN]      = "Cull +range (units)",
-    [MI_CULL_MAX_DISTANCE]  = "Cull max dist (u)",
-    [MI_SHADOW_QUALITY]     = "Shadow Quality",
-    [MI_REDUCE_ACRE_DRAW]   = "Acre Draw",
-    [MI_PARTICLE_QUALITY]   = "Weather effects",
-    [MI_PRELOAD_TEXTURES]   = "Preload Textures",
-    [MI_DISABLE_RESETTI]    = "Disable Resetti",
-    [MI_BELLS_TO_WALLET]    = "Bells to Wallet",
-    [MI_SHOP_NO_VISITOR]    = "Shop Upgrade",
-    [MI_NES_ASPECT]         = "NES Aspect",
-    /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: NULL, handled via pc_keybinding_label() */
-};
-
-static const char* get_item_label(int i) {
-    if (i >= MI_KB_BASE && i < MI_KB_BASE + KB_COUNT)
-        return pc_keybinding_label(i - MI_KB_BASE);
-    return menu_labels[i];
-}
-
-/* ---- Menu tabs ---- */
-/* GAME holds gameplay toggles; verbose logging lives under PERF with the
- * other diagnostics (the menu is 28 columns, no room for a sixth tab). */
-enum { TAB_VIDEO, TAB_AUDIO, TAB_CONTROLS, TAB_GAME, TAB_PERF, TAB_COUNT };
-static const char* tab_labels[TAB_COUNT] = { "VIDEO", "AUDIO", "CTRL", "GAME", "PERF" };
-static int s_active_tab = 0;
-
-/* Which tab each menu item belongs to (indexed by MI_*) */
-static const int menu_item_tab[MI_COUNT] = {
-    [MI_FPS_COUNTER]     = TAB_VIDEO,
-    [MI_MASTER_VOLUME]   = TAB_AUDIO,
-    [MI_BGM_VOLUME]      = TAB_AUDIO,
-    [MI_SFX_VOLUME]      = TAB_AUDIO,
-    [MI_VOICE_VOLUME]    = TAB_AUDIO,
-    [MI_FULLSCREEN]      = TAB_VIDEO,
-    [MI_VSYNC]           = TAB_VIDEO,
-    [MI_MSAA]            = TAB_VIDEO,
-    [MI_ZOOM_ENABLED]    = TAB_VIDEO,
-    [MI_ENDLESS_ACRES]   = TAB_GAME,
-    [MI_FPS_TARGET]      = TAB_VIDEO,
-    [MI_RENDER_SCALE]    = TAB_VIDEO,
-    [MI_WINDOW_SIZE]     = TAB_VIDEO,
-    [MI_SCALE_MODE]      = TAB_VIDEO,
-    [MI_VERBOSE]         = TAB_PERF,
-    [MI_CTRL_SWAP_AB]       = TAB_CONTROLS,
-    [MI_CTRL_DPAD_STICK]    = TAB_CONTROLS,
-    [MI_LEFT_DEADZONE]      = TAB_CONTROLS,
-    [MI_RIGHT_DEADZONE]     = TAB_CONTROLS,
-    [MI_CTRL_RESET]         = TAB_CONTROLS,
-    [MI_FRUSTUM_CULL]       = TAB_PERF,
-    [MI_CULL_Z_MARGIN]      = TAB_PERF,
-    [MI_CULL_MAX_DISTANCE]  = TAB_PERF,
-    [MI_SHADOW_QUALITY]     = TAB_PERF,
-    [MI_REDUCE_ACRE_DRAW]   = TAB_PERF,
-    [MI_PARTICLE_QUALITY]   = TAB_PERF,
-    [MI_PRELOAD_TEXTURES]   = TAB_PERF,
-    [MI_DISABLE_RESETTI]    = TAB_GAME,
-    [MI_BELLS_TO_WALLET]    = TAB_GAME,
-    [MI_SHOP_NO_VISITOR]    = TAB_GAME,
-    [MI_NES_ASPECT]         = TAB_VIDEO,
-    /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: handled by item_tab() helper below */
-};
-
-/* Tab for item i — KB items always belong to TAB_CONTROLS */
-static int item_tab(int i) {
-    if (i >= MI_KB_BASE && i < MI_KB_BASE + KB_COUNT) return TAB_CONTROLS;
-    return menu_item_tab[i];
-}
-
-/* Returns index of nth visible item in the active tab, or -1 if out of range. */
-static int tab_item_at(int n) {
-    int found = 0;
-    for (int i = 0; i < MI_COUNT; i++) {
-        if (item_tab(i) == s_active_tab) {
-            if (found == n) return i;
-            found++;
-        }
-    }
-    return -1;
-}
-static int tab_item_count(void) {
-    int count = 0;
-    for (int i = 0; i < MI_COUNT; i++)
-        if (item_tab(i) == s_active_tab) count++;
-    return count;
-}
-
-static void menu_get_value(int item, char* buf, int sz) {
-    switch (item) {
-    case MI_FPS_COUNTER:   snprintf(buf, sz, "%s", g_pc_settings.show_fps ? "ON" : "OFF"); break;
-    case MI_MASTER_VOLUME: snprintf(buf, sz, "%d%%", g_pc_settings.master_volume); break;
-    case MI_BGM_VOLUME:    snprintf(buf, sz, "%d%%", g_pc_settings.bgm_volume); break;
-    case MI_SFX_VOLUME:    snprintf(buf, sz, "%d%%", g_pc_settings.sfx_volume); break;
-    case MI_VOICE_VOLUME:  snprintf(buf, sz, "%d%%", g_pc_settings.voice_volume); break;
-    case MI_FULLSCREEN: {
-        const char* m[] = {"Windowed", "Fullscreen", "Borderless"};
-        snprintf(buf, sz, "%s", m[g_pc_settings.fullscreen]);
-        break;
-    }
-    case MI_VSYNC:         snprintf(buf, sz, "%s", g_pc_settings.vsync ? "ON" : "OFF"); break;
-    case MI_MSAA:
-        if (g_pc_settings.msaa == 0) snprintf(buf, sz, "Off");
-        else snprintf(buf, sz, "%dx", g_pc_settings.msaa);
-        break;
-    case MI_ZOOM_ENABLED:  snprintf(buf, sz, "%s", g_pc_settings.zoom_enabled ? "ON" : "OFF"); break;
-    case MI_FPS_TARGET: {
-        static const char* names[] = {"60 FPS", "50 FPS", "40 FPS", "30 FPS", "20 FPS", "Unlimited", "Dynamic"};
-        int t = g_pc_settings.fps_target;
-        if (t < 0 || t > 6) t = 0;
-        snprintf(buf, sz, "%s", names[t]);
-        break;
-    }
-    case MI_RENDER_SCALE:
-        snprintf(buf, sz, "%d%%", g_pc_settings.render_scale);
-        break;
-    case MI_WINDOW_SIZE: {
-        static const char* wsnames[] = {"320x240", "480x360", "640x480", "960x720", "1280x960", "720x480", "Custom"};
-        int w = g_pc_settings.window_size;
-        if (w < 0 || w > 6) w = 6;
-        snprintf(buf, sz, "%s", wsnames[w]);
-        break;
-    }
-    case MI_SCALE_MODE:
-        snprintf(buf, sz, "%s", g_pc_settings.scale_mode == 1 ? "Center" : "Stretch");
-        break;
-    case MI_VERBOSE:         snprintf(buf, sz, "%s", g_pc_settings.verbose ? "ON" : "OFF"); break;
-    case MI_CTRL_SWAP_AB:    snprintf(buf, sz, "%s", g_pc_settings.swap_ab_xy ? "ON" : "OFF"); break;
-    case MI_CTRL_DPAD_STICK:
-        if (g_pc_settings.dpad_as_stick == 2)
-            snprintf(buf, sz, "Auto (%s)", pc_pad_dpad_as_stick_active() ? "ON" : "OFF");
-        else
-            snprintf(buf, sz, "%s", g_pc_settings.dpad_as_stick ? "ON" : "OFF");
-        break;
-    case MI_LEFT_DEADZONE:   snprintf(buf, sz, "%d%%", g_pc_settings.left_deadzone); break;
-    case MI_RIGHT_DEADZONE:  snprintf(buf, sz, "%d%%", g_pc_settings.right_deadzone); break;
-    case MI_CTRL_RESET:      snprintf(buf, sz, "Press >"); break;
-    case MI_FRUSTUM_CULL:    snprintf(buf, sz, "%s", g_pc_settings.frustum_cull ? "ON" : "OFF"); break;
-    case MI_CULL_Z_MARGIN:   snprintf(buf, sz, "+%d", g_pc_settings.frustum_cull_z_margin); break;
-    case MI_CULL_MAX_DISTANCE: {
-        if (g_pc_settings.frustum_cull_max_distance == 0)
-            snprintf(buf, sz, "No cap");
-        else
-            snprintf(buf, sz, "%d", g_pc_settings.frustum_cull_max_distance);
-        break;
-    }
-    case MI_SHADOW_QUALITY: {
-        static const char* snames[] = {"All", "Player only", "Off", "Player + NPC"};
-        int s = g_pc_settings.shadow_quality;
-        if (s < 0 || s > 3) s = 0;
-        snprintf(buf, sz, "%s", snames[s]);
-        break;
-    }
-    case MI_REDUCE_ACRE_DRAW: {
-        static const char* arnames[] = {"Full (8)", "Cross (5)", "Current"};
-        int ar = g_pc_settings.reduce_acre_draw;
-        if (ar < 0 || ar > 2) ar = 0;
-        snprintf(buf, sz, "%s", arnames[ar]);
-        break;
-    }
-    case MI_PARTICLE_QUALITY: {
-        static const char* pnames[] = {"Off", "25%", "50%", "75%", "100%"};
-        int pq = g_pc_settings.particle_quality;
-        if (pq < 0 || pq > 4) pq = 4;
-        snprintf(buf, sz, "%s", pnames[pq]);
-        break;
-    }
-    case MI_PRELOAD_TEXTURES: {
-        static const char* ptnames[] = {"Off", "On", "On+Cache"};
-        int pt = g_pc_settings.preload_textures;
-        if (pt < 0 || pt > 2) pt = 0;
-        snprintf(buf, sz, "%s", ptnames[pt]);
-        break;
-    }
-    case MI_DISABLE_RESETTI: snprintf(buf, sz, "%s", g_pc_settings.disable_resetti ? "ON" : "OFF"); break;
-    case MI_BELLS_TO_WALLET: snprintf(buf, sz, "%s", g_pc_settings.bells_to_wallet ? "ON" : "OFF"); break;
-    case MI_SHOP_NO_VISITOR: snprintf(buf, sz, "%s", g_pc_settings.shop_no_visitor ? "No visitor" : "Original"); break;
-    case MI_NES_ASPECT:      snprintf(buf, sz, "%s", g_pc_settings.nes_aspect ? "4:3" : "Stretch"); break;
-    case MI_ENDLESS_ACRES:   snprintf(buf, sz, "%s", g_pc_settings.borderless_acres ? "ON" : "OFF"); break;
-    default:
-        if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT) {
-            int kb_idx = item - MI_KB_BASE;
-            if (kb_idx == ctrl_capture_idx) {
-                /* Rebind capture: show countdown */
-                Uint32 elapsed = SDL_GetTicks() - ctrl_capture_start;
-                int secs_left = (int)((CTRL_CAPTURE_MS - (int)elapsed + 999) / 1000);
-                if (secs_left < 1) secs_left = 1;
-                snprintf(buf, sz, "[%d...]", secs_left);
-            } else if (kb_idx == ctrl_clear_kb_idx && ctrl_clear_start) {
-                /* Hold-to-clear: show shrinking countdown */
-                int ms_left = CTRL_CLEAR_MS - (int)(SDL_GetTicks() - ctrl_clear_start);
-                if (ms_left < 0) ms_left = 0;
-                snprintf(buf, sz, "[CLR %d]", (ms_left + 999) / 1000);
-            } else {
-                PCInputCode* p = pc_keybinding_ptr(kb_idx);
-                PCInputCode code = p ? *p : -1;
-                if (code < 0) snprintf(buf, sz, "[NONE]");
-                else if ((unsigned)code & PC_INPUT_GAMEPAD_BIT) {
-                    const char* s = SDL_GameControllerGetStringForButton(
-                        (SDL_GameControllerButton)(code & 0xFF));
-                    snprintf(buf, sz, "GP %s", s ? s : "?");
-                } else {
-                    const char* name = SDL_GetScancodeName((SDL_Scancode)code);
-                    snprintf(buf, sz, "%.*s", sz - 1, name);
-                }
-            }
-        }
-        break;
-    }
-}
-
-static void menu_adjust_vol(int* vol, int dir) {
-    int v = *vol + dir * 5;
-    if (v < 0) v = 0; if (v > 100) v = 100;
-    *vol = v;
-}
-
-static void menu_adjust(int item, int dir) {
-    switch (item) {
-    case MI_FPS_COUNTER:   g_pc_settings.show_fps ^= 1; break;
-    case MI_MASTER_VOLUME: menu_adjust_vol(&g_pc_settings.master_volume, dir); break;
-    case MI_BGM_VOLUME:    menu_adjust_vol(&g_pc_settings.bgm_volume, dir); break;
-    case MI_SFX_VOLUME:    menu_adjust_vol(&g_pc_settings.sfx_volume, dir); break;
-    case MI_VOICE_VOLUME:  menu_adjust_vol(&g_pc_settings.voice_volume, dir); break;
-    case MI_FULLSCREEN: {
-        int v = g_pc_settings.fullscreen + dir;
-        if (v < 0) v = 2; if (v > 2) v = 0;
-        g_pc_settings.fullscreen = v;
-        pc_settings_apply();
-        break;
-    }
-    case MI_VSYNC:
-        g_pc_settings.vsync ^= 1;
-        pc_settings_apply();
-        break;
-    case MI_MSAA: {
-        int vals[] = {0, 2, 4, 8};
-        int cur = 0;
-        for (int i = 0; i < 4; i++) if (vals[i] == g_pc_settings.msaa) cur = i;
-        cur += dir;
-        if (cur < 0) cur = 3; if (cur > 3) cur = 0;
-        g_pc_settings.msaa = vals[cur];
-        break; /* MSAA needs restart */
-    }
-    case MI_ZOOM_ENABLED:  g_pc_settings.zoom_enabled ^= 1; break;
-    case MI_FPS_TARGET: {
-        /* Right = faster (lower index), Left = slower (higher index) */
-        int v = g_pc_settings.fps_target - dir;
-        if (v < 0) v = 6; if (v > 6) v = 0;
-        g_pc_settings.fps_target = v;
-        static const int fps_hz[7] = {60, 50, 40, 30, 20, 0, 60};
-        g_pc_fps_target = fps_hz[v];
-        if (v == 5) g_pc_no_framelimit = 1;
-        else        g_pc_no_framelimit = 0;
-        extern void pc_dynamic_fps_reset(void);
-        pc_dynamic_fps_reset();
-        break;
-    }
-    case MI_RENDER_SCALE: {
-        static const int scales[] = {25, 50, 75, 100};
-        int cur = 3; /* default to 100% */
-        for (int i = 0; i < 4; i++) if (scales[i] == g_pc_settings.render_scale) { cur = i; break; }
-        cur += dir;
-        if (cur < 0) cur = 3; if (cur > 3) cur = 0;
-        g_pc_settings.render_scale = scales[cur];
-        pc_settings_apply();
-        break;
-    }
-    case MI_WINDOW_SIZE: {
-        int v = g_pc_settings.window_size + dir;
-        if (v < 0) v = 5; if (v > 5) v = 0; /* skip Custom (6) from menu cycling */
-        g_pc_settings.window_size = v;
-        pc_settings_apply();
-        break;
-    }
-    case MI_SCALE_MODE:
-        g_pc_settings.scale_mode ^= 1;
-        g_pc_scale_mode = g_pc_settings.scale_mode;
-        break;
-    case MI_VERBOSE:         g_pc_settings.verbose ^= 1; break;
-    case MI_CTRL_SWAP_AB: {
-        /* Swap A↔B and X↔Y directly in keybindings so the mapping list reflects it.
-         * Also set the swap flag so the hardcoded gamepad path picks it up. */
-        PCInputCode tmp;
-        tmp = g_pc_keybindings.a; g_pc_keybindings.a = g_pc_keybindings.b; g_pc_keybindings.b = tmp;
-        tmp = g_pc_keybindings.x; g_pc_keybindings.x = g_pc_keybindings.y; g_pc_keybindings.y = tmp;
-        g_pc_settings.swap_ab_xy ^= 1;
-        pc_keybindings_save();
-        break;
-    }
-    case MI_CTRL_DPAD_STICK: {
-        /* Cycle OFF -> ON -> Auto */
-        int v = g_pc_settings.dpad_as_stick + dir;
-        if (v < 0) v = 2; if (v > 2) v = 0;
-        g_pc_settings.dpad_as_stick = v;
-        break;
-    }
-    case MI_LEFT_DEADZONE: {
-        int v = g_pc_settings.left_deadzone + dir * 5;
-        if (v < 0) v = 0; if (v > 50) v = 50;
-        g_pc_settings.left_deadzone = v;
-        break;
-    }
-    case MI_RIGHT_DEADZONE: {
-        int v = g_pc_settings.right_deadzone + dir * 5;
-        if (v < 0) v = 0; if (v > 50) v = 50;
-        g_pc_settings.right_deadzone = v;
-        break;
-    }
-    case MI_CTRL_RESET:      pc_keybindings_reset(); pc_settings_reset_controllers(); break;
-    case MI_FRUSTUM_CULL:    g_pc_settings.frustum_cull ^= 1; break;
-    case MI_CULL_Z_MARGIN: {
-        int v = g_pc_settings.frustum_cull_z_margin + dir * 10;
-        if (v < 0) v = 0; if (v > 200) v = 200;
-        g_pc_settings.frustum_cull_z_margin = v;
-        break;
-    }
-    case MI_CULL_MAX_DISTANCE: {
-        /* 0 = uncapped; stepped caps so you can see culling in-game (lower = stricter). */
-        static const int caps[] = {
-            0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000,
-            1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000
-        };
-        int cur = 0;
-        for (int i = 0; i < (int)(sizeof caps / sizeof caps[0]); i++)
-            if (caps[i] == g_pc_settings.frustum_cull_max_distance) {
-                cur = i;
-                break;
-            }
-        cur += dir;
-        if (cur < 0) cur = (int)(sizeof caps / sizeof caps[0]) - 1;
-        if (cur >= (int)(sizeof caps / sizeof caps[0])) cur = 0;
-        g_pc_settings.frustum_cull_max_distance = caps[cur];
-        break;
-    }
-    case MI_SHADOW_QUALITY: {
-        /* Cycle quality high→low: All → player+NPC → player only → off */
-        static const int order[] = {0, 3, 1, 2};
-        int cur = 0;
-        int i;
-        for (i = 0; i < 4; i++) {
-            if (order[i] == g_pc_settings.shadow_quality) {
-                cur = i;
-                break;
-            }
-        }
-        cur += dir;
-        while (cur < 0) {
-            cur += 4;
-        }
-        while (cur > 3) {
-            cur -= 4;
-        }
-        g_pc_settings.shadow_quality = order[cur];
-        break;
-    }
-    case MI_REDUCE_ACRE_DRAW: {
-        int v = g_pc_settings.reduce_acre_draw + dir;
-        if (v < 0) v = 2;
-        if (v > 2) v = 0;
-        g_pc_settings.reduce_acre_draw = v;
-        break;
-    }
-    case MI_PARTICLE_QUALITY: {
-        int v = g_pc_settings.particle_quality + dir;
-        if (v < 0) v = 4;
-        if (v > 4) v = 0;
-        g_pc_settings.particle_quality = v;
-        break;
-    }
-    case MI_PRELOAD_TEXTURES: {
-        int v = g_pc_settings.preload_textures + dir;
-        if (v < 0) v = 2;
-        if (v > 2) v = 0;
-        g_pc_settings.preload_textures = v;
-        break;
-    }
-    case MI_DISABLE_RESETTI: g_pc_settings.disable_resetti ^= 1; break;
-    case MI_BELLS_TO_WALLET: g_pc_settings.bells_to_wallet ^= 1; break;
-    case MI_SHOP_NO_VISITOR: g_pc_settings.shop_no_visitor ^= 1; break;
-    case MI_NES_ASPECT:      g_pc_settings.nes_aspect ^= 1; break;
-    case MI_ENDLESS_ACRES:
-        g_pc_settings.borderless_acres ^= 1;
-        pc_settings_apply_borderless_acres(); /* takes effect right away */
-        break;
-    default:
-        if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT && dir == 1) {
-            ctrl_capture_idx = item - MI_KB_BASE;
-            ctrl_capture_start = SDL_GetTicks();
-        }
-        break;
-    }
-}
 
 /* ---- Embedded shaders ---- */
 #ifdef PC_USE_GLES
@@ -514,7 +43,9 @@ static const char* ov_frag_src =
     "in vec2 v_uv; in vec4 v_col;\n"
     "uniform sampler2D u_font;\n"
     "out vec4 fragColor;\n"
-    "void main(){float a=texture(u_font,v_uv).r;fragColor=vec4(v_col.rgb,v_col.a*a);}\n";
+    "uniform int u_rgba;\n"
+    "void main(){if(u_rgba==1){fragColor=texture(u_font,v_uv)*v_col;return;}"
+    "float a=texture(u_font,v_uv).r;fragColor=vec4(v_col.rgb,v_col.a*a);}\n";
 #else
 static const char* ov_vert_src =
     "#version 330 core\n"
@@ -528,7 +59,9 @@ static const char* ov_frag_src =
     "in vec2 v_uv; in vec4 v_col;\n"
     "uniform sampler2D u_font;\n"
     "out vec4 fragColor;\n"
-    "void main(){float a=texture(u_font,v_uv).r;fragColor=vec4(v_col.rgb,v_col.a*a);}\n";
+    "uniform int u_rgba;\n"
+    "void main(){if(u_rgba==1){fragColor=texture(u_font,v_uv)*v_col;return;}"
+    "float a=texture(u_font,v_uv).r;fragColor=vec4(v_col.rgb,v_col.a*a);}\n";
 #endif
 
 /* ---- 8x8 bitmap font (ASCII 32-127 = 96 glyphs, IBM PC BIOS style) ---- */
@@ -699,165 +232,6 @@ static void ov_string_right(const char* s, float x_right, float y, float cw, flo
     ov_string(s, x_right - len * cw, y, cw, ch, r, g, b, a);
 }
 
-/* ---- Input repeat helper ---- */
-static int ov_repeat(int held, int* timer) {
-    if (!held) { *timer = 0; return 0; }
-    if (*timer == 0) { *timer = 1; return 1; } /* first press */
-    (*timer)++;
-    if (*timer == REP_DELAY) { return 1; }
-    if (*timer > REP_DELAY && ((*timer - REP_DELAY) % REP_RATE) == 0) { return 1; }
-    return 0;
-}
-
-/* ---- Menu input (called from draw, polls SDL state) ---- */
-static void menu_process_input(void) {
-    if (!g_pc_menu_open) return;
-
-    int nkeys;
-    const Uint8* keys = SDL_GetKeyboardState(&nkeys);
-    SDL_GameController* ctrl = pc_pad_get_controller();
-
-    /* ---- Capture mode: intercept all input until key is pressed or timeout ---- */
-    if (ctrl_capture_idx >= 0) {
-        Uint32 elapsed = SDL_GetTicks() - ctrl_capture_start;
-        if (elapsed >= CTRL_CAPTURE_MS) {
-            /* Timed out — cancel */
-            ctrl_capture_idx = -1;
-        } else {
-            /* Scan for any new keyboard press */
-            for (int sc = SDL_SCANCODE_UNKNOWN + 1; sc < nkeys && sc < SDL_NUM_SCANCODES; sc++) {
-                if (keys[sc] && !s_prev_keys[sc]) {
-                    /* Set binding and exit capture */
-                    PCInputCode* p = pc_keybinding_ptr(ctrl_capture_idx);
-                    if (p) *p = (PCInputCode)sc;
-                    pc_keybindings_save();
-                    ctrl_capture_idx = -1;
-                    break;
-                }
-            }
-        }
-        /* Also scan gamepad buttons (covers PortMaster and other gamepad-only devices) */
-        if (ctrl_capture_idx >= 0 && ctrl) {
-            int btn;
-            for (btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++) {
-                int cur = SDL_GameControllerGetButton(ctrl, (SDL_GameControllerButton)btn);
-                if (cur && !s_prev_gamepad[btn]) {
-                    PCInputCode* p = pc_keybinding_ptr(ctrl_capture_idx);
-                    if (p) *p = PC_INPUT_GAMEPAD_BTN(btn);
-                    pc_keybindings_save();
-                    ctrl_capture_idx = -1;
-                    break;
-                }
-            }
-        }
-
-        /* Always update prev state and return — suppress normal nav in capture mode */
-        if (nkeys > SDL_NUM_SCANCODES) nkeys = SDL_NUM_SCANCODES;
-        SDL_memcpy(s_prev_keys, keys, nkeys);
-        {
-            int btn;
-            for (btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++)
-                s_prev_gamepad[btn] = (Uint8)(ctrl ? SDL_GameControllerGetButton(ctrl, (SDL_GameControllerButton)btn) : 0);
-        }
-        s_prev_ctrl_a = ctrl ? SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_A) : 0;
-        return;
-    }
-
-    /* ---- Normal navigation ---- */
-    int up    = keys[SDL_SCANCODE_UP];
-    int down  = keys[SDL_SCANCODE_DOWN];
-    int left  = keys[SDL_SCANCODE_LEFT];
-    int right = keys[SDL_SCANCODE_RIGHT];
-    int tab_l = keys[SDL_SCANCODE_Q] || keys[SDL_SCANCODE_PAGEUP];
-    int tab_r = keys[SDL_SCANCODE_E] || keys[SDL_SCANCODE_PAGEDOWN];
-    int ctrl_a = 0, ctrl_x = 0;
-
-    if (ctrl) {
-        up    |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_UP);
-        down  |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
-        left  |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
-        right |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
-        tab_l |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
-        tab_r |= SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
-        ctrl_a = SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_A);
-        ctrl_x = SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_X);
-    }
-
-    /* Tab switching */
-    static int rep_tabl = 0, rep_tabr = 0;
-    if (ov_repeat(tab_l, &rep_tabl)) {
-        s_active_tab--;
-        if (s_active_tab < 0) s_active_tab = TAB_COUNT - 1;
-        menu_cursor = 0;
-        ctrl_scroll = 0;
-    }
-    if (ov_repeat(tab_r, &rep_tabr)) {
-        s_active_tab++;
-        if (s_active_tab >= TAB_COUNT) s_active_tab = 0;
-        menu_cursor = 0;
-        ctrl_scroll = 0;
-    }
-
-    int count = tab_item_count();
-    if (ov_repeat(up,   &rep_up))   { menu_cursor--; if (menu_cursor < 0) menu_cursor = count - 1; }
-    if (ov_repeat(down, &rep_down)) { menu_cursor++; if (menu_cursor >= count) menu_cursor = 0; }
-
-    /* Keep scroll window in sync with cursor (Controls tab only) */
-    if (s_active_tab == TAB_CONTROLS) {
-        if (menu_cursor < ctrl_scroll)
-            ctrl_scroll = menu_cursor;
-        if (menu_cursor >= ctrl_scroll + CTRL_VISIBLE_ROWS)
-            ctrl_scroll = menu_cursor - CTRL_VISIBLE_ROWS + 1;
-        if (ctrl_scroll < 0) ctrl_scroll = 0;
-    }
-
-    int mi = tab_item_at(menu_cursor);
-    if (mi >= 0) {
-        if (ov_repeat(left,  &rep_left))  menu_adjust(mi, -1);
-        if (ov_repeat(right, &rep_right)) menu_adjust(mi, +1);
-
-        /* Gamepad A (rising edge) on a KB item → enter capture */
-        if (mi >= MI_KB_BASE && mi < MI_KB_BASE + KB_COUNT) {
-            if (ctrl_a && !s_prev_ctrl_a) {
-                ctrl_capture_idx = mi - MI_KB_BASE;
-                ctrl_capture_start = SDL_GetTicks();
-            }
-            /* X button or Delete key held → clear binding after CTRL_CLEAR_MS.
-             * Uses a hold timer rather than edge detection to prevent the button
-             * just used for capture from immediately clearing the new binding. */
-            {
-                int x_or_del = ctrl_x || keys[SDL_SCANCODE_DELETE];
-                if (x_or_del) {
-                    if (!ctrl_clear_start) {
-                        ctrl_clear_start  = SDL_GetTicks();
-                        ctrl_clear_kb_idx = mi - MI_KB_BASE;
-                    }
-                    if (SDL_GetTicks() - ctrl_clear_start >= CTRL_CLEAR_MS) {
-                        PCInputCode* p = pc_keybinding_ptr(mi - MI_KB_BASE);
-                        if (p) *p = -1;
-                        pc_keybindings_save();
-                        ctrl_clear_start  = 0;
-                        ctrl_clear_kb_idx = -1;
-                    }
-                } else {
-                    ctrl_clear_start  = 0;
-                    ctrl_clear_kb_idx = -1;
-                }
-            }
-        }
-    }
-
-    /* Update edge-detection state */
-    if (nkeys > SDL_NUM_SCANCODES) nkeys = SDL_NUM_SCANCODES;
-    SDL_memcpy(s_prev_keys, keys, nkeys);
-    {
-        int btn;
-        for (btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++)
-            s_prev_gamepad[btn] = (Uint8)(ctrl ? SDL_GameControllerGetButton(ctrl, (SDL_GameControllerButton)btn) : 0);
-    }
-    s_prev_ctrl_a = ctrl_a;
-}
-
 /* ---- Draw: FPS counter (top-right corner) ---- */
 static void draw_fps(float cw, float ch, float pad) {
     char line1[32], line2[32];
@@ -881,132 +255,41 @@ static void draw_fps(float cw, float ch, float pad) {
     ov_string(line2, px + pad, py + pad + ch + pad, cw, ch, 0.8f, 0.8f, 0.8f, 1);
 }
 
-/* ---- Draw: Settings menu (centered) ---- */
-static void draw_menu(float cw, float ch, float pad) {
-    int tab_count = tab_item_count();
-    int cols = 28;
-    int val_col = 18;
-
-    /* Controls tab shows at most CTRL_VISIBLE_ROWS items */
-    int vis_count = tab_count;
-    int vis_start = 0;
-    if (s_active_tab == TAB_CONTROLS) {
-        vis_start = ctrl_scroll;
-        vis_count = tab_count - ctrl_scroll;
-        if (vis_count > CTRL_VISIBLE_ROWS) vis_count = CTRL_VISIBLE_ROWS;
-    }
-
-    /* Title row + tab bar row + blank + visible items + blank + 2 footer rows */
-    int lines = 1 + 1 + 1 + vis_count + 1 + 2;
-
-    float mw = cols * cw + 2.0f * pad;
-    float mh = lines * (ch + pad) + pad;
-    float mx = ((float)g_pc_window_w - mw) * 0.5f;
-    float my = ((float)g_pc_window_h - mh) * 0.5f;
-
-    /* Background */
-    ov_quad(mx, my, mw, mh, BG_U, BG_V, BG_U, BG_V, 0, 0, 0, 0.80f);
-
-    float row_h = ch + pad;
-    float tx = mx + pad;
-    float ty = my + pad;
-
-    /* Title */
-    float title_x = mx + (mw - 8.0f * cw) * 0.5f;
-    ov_string("SETTINGS", title_x, ty, cw, ch, 1, 1, 1, 1);
-    ty += row_h;
-
-    /* Tab bar — justified: distribute remaining width as equal gaps between tabs */
-    {
-        int total_lbl = 0;
-        for (int t = 0; t < TAB_COUNT; t++)
-            total_lbl += (int)strlen(tab_labels[t]);
-        float gap_w = (cols - total_lbl) * cw / (float)(TAB_COUNT - 1);
-        float tab_x = tx;
-        for (int t = 0; t < TAB_COUNT; t++) {
-            const char* lbl = tab_labels[t];
-            int lbl_len = (int)strlen(lbl);
-            if (t == s_active_tab) {
-                ov_string(lbl, tab_x, ty, cw, ch, 1, 1, 0.3f, 1);
-                ov_quad(tab_x, ty + ch, lbl_len * cw, 2.0f,
-                        BG_U, BG_V, BG_U, BG_V, 1, 1, 0.3f, 1);
-            } else {
-                ov_string(lbl, tab_x, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
-            }
-            tab_x += lbl_len * cw + gap_w;
-        }
-        ty += row_h + pad;
-    }
-
-    /* Scroll up arrow */
-    if (s_active_tab == TAB_CONTROLS && ctrl_scroll > 0)
-        ov_string("^", tx + (cols - 1) * cw, ty, cw, ch, 0.6f, 0.6f, 0.6f, 1);
-
-    /* Items for active tab (scrolled window) */
-    for (int n = 0; n < vis_count; n++) {
-        int item_n = vis_start + n;
-        int i = tab_item_at(item_n);
-        if (i < 0) break;
-
-        float r, g, b;
-        int selected = (item_n == menu_cursor);
-        if (selected) { r = 1.0f; g = 1.0f; b = 0.3f; }
-        else          { r = 0.75f; g = 0.75f; b = 0.75f; }
-
-        if (selected)
-            ov_string(">", tx, ty, cw, ch, r, g, b, 1);
-
-        ov_string(get_item_label(i), tx + 2 * cw, ty, cw, ch, r, g, b, 1);
-
-        char val[32];
-        menu_get_value(i, val, sizeof(val));
-        float vr = 1, vg = 1, vb = 1;
-        if (selected) { vr = 1; vg = 1; vb = 0.5f; }
-        ov_string_right(val, tx + cols * cw, ty, cw, ch, vr, vg, vb, 1);
-
-        /* Volume bar */
-        {
-            int vol_val = -1;
-            if (i == MI_MASTER_VOLUME) vol_val = g_pc_settings.master_volume;
-            else if (i == MI_BGM_VOLUME)   vol_val = g_pc_settings.bgm_volume;
-            else if (i == MI_SFX_VOLUME)   vol_val = g_pc_settings.sfx_volume;
-            else if (i == MI_VOICE_VOLUME) vol_val = g_pc_settings.voice_volume;
-            if (vol_val >= 0) {
-                float bar_x = tx + (val_col - 1) * cw;
-                float bar_w = (cols - val_col - 5) * cw;
-                float bar_h = ch * 0.3f;
-                float bar_y = ty + ch * 0.35f;
-                float fill = (float)vol_val / 100.0f;
-                ov_quad(bar_x, bar_y, bar_w, bar_h, BG_U, BG_V, BG_U, BG_V, 0.3f, 0.3f, 0.3f, 1);
-                if (fill > 0)
-                    ov_quad(bar_x, bar_y, bar_w * fill, bar_h, BG_U, BG_V, BG_U, BG_V,
-                            selected ? 1.0f : 0.6f,
-                            selected ? 1.0f : 0.6f,
-                            selected ? 0.3f : 0.6f, 1);
-            }
-        }
-
-        ty += row_h;
-    }
-
-    /* Scroll down arrow — drawn in the gap row, not over items */
-    if (s_active_tab == TAB_CONTROLS && ctrl_scroll + CTRL_VISIBLE_ROWS < tab_count)
-        ov_string("v", tx + (cols - 1) * cw, ty, cw, ch, 0.6f, 0.6f, 0.6f, 1);
-
-    /* Footer — one full row below items */
-    ty += row_h;
-    if (ctrl_capture_idx >= 0) {
-        ov_string("Any key: bind  Back: cancel", tx, ty, cw, ch, 0.5f, 0.8f, 0.5f, 1);
-    } else if (s_active_tab == TAB_CONTROLS) {
-        ov_string(">:rebind  X/Del:clear", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
-    } else {
-        ov_string("L/R:Tab  U/D:Nav  L/R:Adj", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
-    }
-    ty += row_h;
-    ov_string("Select/Tab:Close+Save", tx, ty, cw, ch, 0.5f, 0.5f, 0.5f, 1);
-}
-
 /* ---- Public API ---- */
+
+/* "OCLG", u16 w, u16 h (little endian), then RGBA8 rows: written by
+ * pc/tools/make_splash_logo.py. Missing or bad file: no logo, no error. */
+static void ov_load_logo(void) {
+    unsigned char hdr[8];
+    unsigned char* px;
+    size_t n;
+    FILE* f = fopen("res/splash_logo.bin", "rb");
+    if (!f) return;
+    if (fread(hdr, 1, 8, f) != 8 || memcmp(hdr, "OCLG", 4) != 0) {
+        fclose(f);
+        return;
+    }
+    ov_logo_w = hdr[4] | (hdr[5] << 8);
+    ov_logo_h = hdr[6] | (hdr[7] << 8);
+    n = (size_t)ov_logo_w * (size_t)ov_logo_h * 4;
+    px = (n > 0 && n <= 4096u * 4096u) ? (unsigned char*)malloc(n) : NULL;
+    if (!px || fread(px, 1, n, f) != n) {
+        free(px);
+        fclose(f);
+        ov_logo_w = ov_logo_h = 0;
+        return;
+    }
+    fclose(f);
+    glGenTextures(1, &ov_logo_tex);
+    glBindTexture(GL_TEXTURE_2D, ov_logo_tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ov_logo_w, ov_logo_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    free(px);
+}
 
 void pc_overlay_init(void) {
     /* Save GL state that we'll disturb — pc_gx keeps its VAO/VBO bound at all times */
@@ -1032,6 +315,7 @@ void pc_overlay_init(void) {
         fprintf(stderr, "[OVERLAY] link error: %s\n", log);
     }
     ov_loc_font = glGetUniformLocation(ov_prog, "u_font");
+    ov_loc_rgba = glGetUniformLocation(ov_prog, "u_rgba");
 
     /* Font texture: 128x48 R8, 16x6 grid of 8x8 chars */
     unsigned char pixels[128 * 48];
@@ -1068,6 +352,8 @@ void pc_overlay_init(void) {
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(OvVtx), (void*)(4 * sizeof(float)));
 
+    ov_load_logo();
+
     /* Restore previous GL state */
     glBindVertexArray(prev_vao);
     glBindBuffer(GL_ARRAY_BUFFER, prev_vbo);
@@ -1076,6 +362,7 @@ void pc_overlay_init(void) {
 
 void pc_overlay_shutdown(void) {
     if (ov_tex)  { glDeleteTextures(1, &ov_tex);       ov_tex = 0; }
+    if (ov_logo_tex) { glDeleteTextures(1, &ov_logo_tex); ov_logo_tex = 0; }
     if (ov_vbo)  { glDeleteBuffers(1, &ov_vbo);        ov_vbo = 0; }
     if (ov_vao)  { glDeleteVertexArrays(1, &ov_vao);   ov_vao = 0; }
     if (ov_prog) { glDeleteProgram(ov_prog);            ov_prog = 0; }
@@ -1086,57 +373,112 @@ void pc_overlay_update(double fps, double speed) {
     ov_speed = speed;
 }
 
-void pc_overlay_menu_toggle(void) {
-    g_pc_menu_open ^= 1;
-    if (!g_pc_menu_open) {
-        /* Save settings and keybindings on close */
-        pc_settings_save();
-        pc_keybindings_save();
-        ctrl_capture_idx  = -1;
-        ctrl_clear_start  = 0;
-        ctrl_clear_kb_idx = -1;
-    }
-    /* Reset repeat timers */
-    rep_up = rep_down = rep_left = rep_right = 0;
+/* A quad shaded top colour to bottom colour (on the solid font cell). */
+static void ov_quad_grad(float x, float y, float w, float h,
+                         const float* top, const float* bot) {
+    ov_push(x,     y,     BG_U, BG_V, top[0], top[1], top[2], top[3]);
+    ov_push(x,     y + h, BG_U, BG_V, bot[0], bot[1], bot[2], bot[3]);
+    ov_push(x + w, y,     BG_U, BG_V, top[0], top[1], top[2], top[3]);
+    ov_push(x + w, y,     BG_U, BG_V, top[0], top[1], top[2], top[3]);
+    ov_push(x,     y + h, BG_U, BG_V, bot[0], bot[1], bot[2], bot[3]);
+    ov_push(x + w, y + h, BG_U, BG_V, bot[0], bot[1], bot[2], bot[3]);
 }
 
-void pc_overlay_boot_splash(const char* msg) {
+static void ov_flush(GLuint tex, int rgba) {
+    if (ov_nv == 0) return;
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glUniform1i(ov_loc_rgba, rgba);
+    glBindBuffer(GL_ARRAY_BUFFER, ov_vbo);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)(ov_nv * sizeof(OvVtx)), ov_verts);
+    glDrawArrays(GL_TRIANGLES, 0, ov_nv);
+    ov_nv = 0;
+}
+
+static void ov_string_centered(const char* s, float y, float cw, float ch,
+                               float r, float g, float b, float a) {
+    float x = ((float)g_pc_window_w - (float)strlen(s) * cw) * 0.5f;
+    ov_string(s, x, y, cw, ch, r, g, b, a);
+}
+
+/* The loading screen: sky to meadow, the logo, a leaf-green progress bar
+ * with what's happening under it. Called at each boot step (frac 0..1);
+ * each call is one frame, and the last one stays up through the game's own
+ * startup until its first frame replaces it. */
+void pc_overlay_boot_progress(float frac, const char* label) {
+    static const float sky_top[4]   = { 0.47f, 0.76f, 0.97f, 1.0f };
+    static const float sky_bot[4]   = { 0.86f, 0.94f, 0.96f, 1.0f };
+    static const float grass_top[4] = { 0.62f, 0.83f, 0.40f, 1.0f };
+    static const float grass_bot[4] = { 0.40f, 0.66f, 0.27f, 1.0f };
+    static const float fill_top[4]  = { 0.62f, 0.86f, 0.38f, 1.0f };
+    static const float fill_bot[4]  = { 0.33f, 0.62f, 0.22f, 1.0f };
+    float W, H, u, horizon, bar_w, bar_h, bar_x, bar_y, cw, ch;
+    int scale;
+
     if (!ov_prog || !g_pc_window) return;
+    if (frac < 0.0f) frac = 0.0f;
+    if (frac > 1.0f) frac = 1.0f;
 
     SDL_PumpEvents();
 
-    glViewport(0, 0, g_pc_window_w, g_pc_window_h);
-    glClearColor(0, 0, 0, 1);
-    glClear(GL_COLOR_BUFFER_BIT);
+    W = (float)g_pc_window_w;
+    H = (float)g_pc_window_h;
+    u = H / 480.0f; /* layout unit: 1 at 480 lines */
 
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, g_pc_window_w, g_pc_window_h);
     glUseProgram(ov_prog);
     glBindVertexArray(ov_vao);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, ov_tex);
     glUniform1i(ov_loc_font, 0);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_SCISSOR_TEST);
 
-    int scale = g_pc_window_h / 240;
+    scale = g_pc_window_h / 240;
     if (scale < 1) scale = 1;
     if (scale > 6) scale = 6;
-    float cw = 8.0f * scale;
-    float ch = 8.0f * scale;
+    cw = 8.0f * scale;
+    ch = 8.0f * scale;
 
+    /* sky, a meadow along the bottom */
     ov_nv = 0;
-    float x = ((float)g_pc_window_w - (float)strlen(msg) * cw) * 0.5f;
-    float y = ((float)g_pc_window_h - ch) * 0.5f;
-    ov_string(msg, x, y, cw, ch, 1, 1, 1, 1);
+    horizon = H * 0.80f;
+    ov_quad_grad(0, 0, W, horizon, sky_top, sky_bot);
+    ov_quad_grad(0, horizon, W, H - horizon, grass_top, grass_bot);
+    ov_flush(ov_tex, 0);
 
-    if (ov_nv > 0) {
-        glBindBuffer(GL_ARRAY_BUFFER, ov_vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)(ov_nv * sizeof(OvVtx)), ov_verts);
-        glDrawArrays(GL_TRIANGLES, 0, ov_nv);
+    /* the logo, as wide as fits */
+    if (ov_logo_tex) {
+        float lw = W * 0.82f, lh;
+        if (lw > (float)ov_logo_w * 1.4f * u) lw = (float)ov_logo_w * 1.4f * u;
+        lh = lw * (float)ov_logo_h / (float)ov_logo_w;
+        ov_quad((W - lw) * 0.5f, H * 0.12f, lw, lh, 0, 0, 1, 1, 1, 1, 1, 1);
+        ov_flush(ov_logo_tex, 1);
     }
 
+    /* progress bar: wood edge, cream track, leaf fill */
+    bar_w = W * 0.56f;
+    bar_h = 18.0f * u;
+    bar_x = (W - bar_w) * 0.5f;
+    bar_y = H * 0.60f;
+    ov_quad(bar_x - 3 * u, bar_y - 3 * u, bar_w + 6 * u, bar_h + 6 * u,
+            BG_U, BG_V, BG_U, BG_V, 0.42f, 0.29f, 0.17f, 1.0f);
+    ov_quad(bar_x, bar_y, bar_w, bar_h, BG_U, BG_V, BG_U, BG_V, 1.0f, 0.97f, 0.88f, 1.0f);
+    if (frac > 0.0f) ov_quad_grad(bar_x, bar_y, bar_w * frac, bar_h, fill_top, fill_bot);
+
+    /* what's happening, and a tip on the grass */
+    if (label) ov_string_centered(label, bar_y + bar_h + 12 * u, cw, ch, 0.33f, 0.22f, 0.12f, 1.0f);
+    ov_string_centered("Press Select in game for Options", horizon + (H - horizon - ch) * 0.5f,
+                       cw, ch, 1.0f, 0.98f, 0.90f, 1.0f);
+    ov_flush(ov_tex, 0);
+
+    glUniform1i(ov_loc_rgba, 0);
     SDL_GL_SwapWindow(g_pc_window);
+}
+
+void pc_overlay_boot_splash(const char* msg) {
+    pc_overlay_boot_progress(0.0f, msg);
 }
 
 /* One frame of the boot fatal-error panel (multi-line, centered, dark red
@@ -1197,12 +539,7 @@ void pc_overlay_boot_error_frame(const char* const* lines, int n_lines) {
 void pc_overlay_draw(void) {
     if (!ov_prog) return;
 
-    /* Nothing to draw? */
-    int want_fps = g_pc_settings.show_fps && !g_pc_menu_open;
-    if (!want_fps && !g_pc_menu_open) return;
-
-    /* Process menu input */
-    if (g_pc_menu_open) menu_process_input();
+    if (!g_pc_settings.show_fps) return;
 
     /* ---- Save GL state ---- */
     GLint sv_prog, sv_vao, sv_vbo, sv_tex, sv_active_tex, sv_vp[4], sv_bsrc, sv_bdst;
@@ -1240,11 +577,7 @@ void pc_overlay_draw(void) {
 
     ov_nv = 0;
 
-    if (g_pc_menu_open) {
-        draw_menu(cw, ch, pad);
-    } else if (want_fps) {
-        draw_fps(cw, ch, pad);
-    }
+    draw_fps(cw, ch, pad);
 
     /* ---- Upload & draw ---- */
     if (ov_nv > 0) {

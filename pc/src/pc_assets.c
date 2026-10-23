@@ -29860,9 +29860,13 @@ extern void _pc_load_src_static_nintendo_hi_0_c(void);
 extern void _pc_load_src_game_m_choice_draw_c_inc(void);
 extern void _pc_load_src_static_bootdata_logo_nin_c(void);
 
+extern void pc_overlay_boot_progress(float frac, const char* label);
+
 void pc_assets_init(void) {
     int i, loaded = 0, failed = 0, rom_mode = 0;
     int total = (int)(sizeof(s_assets) / sizeof(s_assets[0]));
+
+    pc_overlay_boot_progress(0.40f, "Reading the disc");
 
     /* Try disc image (CISO/ISO/GCM) — pc_disc_init() already called from main */
     if (pc_disc_is_open()) {
@@ -29884,6 +29888,8 @@ void pc_assets_init(void) {
             if (g_dol_data) { free(g_dol_data); g_dol_data = NULL; }
         }
     }
+
+    pc_overlay_boot_progress(0.75f, "Unpacking the town");
 
     /* Load all central-table assets */
     for (i = 0; i < total; i++) {
