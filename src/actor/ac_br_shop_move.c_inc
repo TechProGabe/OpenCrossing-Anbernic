@@ -259,18 +259,18 @@ static int aBRS_ctrl_light(STRUCTURE_ACTOR* shop) {
 static void aBRS_actor_move(ACTOR* actor, GAME* game) {
     GAME_PLAY* play = (GAME_PLAY*)game;
     STRUCTURE_ACTOR* shop = (STRUCTURE_ACTOR*)actor;
-    PLAYER_ACTOR* player = GET_PLAYER_ACTOR(play);
-    int bx1;
-    int bz1;
-    int bx2;
-    int bz2;
+    ACTOR* player = GET_PLAYER_ACTOR_ACTOR(play);
+    int shop_bx;
+    int shop_bz;
+    int player_bx;
+    int player_bz;
 
-    mFI_Wpos2BlockNum(&bx1, &bz1, actor->world.position);
-    mFI_Wpos2BlockNum(&bx2, &bz2, player->actor_class.world.position);
+    mFI_Wpos2BlockNum(&shop_bx, &shop_bz, actor->world.position);
+    mFI_Wpos2BlockNum(&player_bx, &player_bz, player->world.position);
 
-    if ((mDemo_Check(mDemo_TYPE_SCROLL, &player->actor_class) == FALSE) &&
-        (mDemo_Check(mDemo_TYPE_SCROLL2, &player->actor_class) == FALSE) &&
-        (mDemo_Check(mDemo_TYPE_SCROLL3, &player->actor_class) == FALSE) && ((bx1 != bx2) || (bz1 != bz2))) {
+    if ((mDemo_Check(mDemo_TYPE_SCROLL, player) == FALSE) && (mDemo_Check(mDemo_TYPE_SCROLL2, player) == FALSE) &&
+        (mDemo_Check(mDemo_TYPE_SCROLL3, player) == FALSE) &&
+        (ABS(shop_bx - player_bx) > 1 || ABS(shop_bz - player_bz) > 1)) {
         Actor_delete(actor);
     } else {
         f32 window;

@@ -5,6 +5,9 @@
 #include "m_bg_item.h"
 #include "m_bgm.h"
 #include "m_msg.h"
+#ifdef TARGET_PC
+#include "m_player_lib.h"
+#endif
 
 /* For whatever reason, this file seems to have -pool off */
 #pragma push
@@ -52,6 +55,10 @@ extern u8 aBTD_island_ldr[];
 #endif
 
 static void aBTD_setupAction(BOAT_DEMO_ACTOR* boat_demo, GAME_PLAY* play, int action);
+
+#ifdef TARGET_PC
+static int l_wade_disabled_bak = FALSE;
+#endif
 
 static void aBTD_actor_ct(ACTOR* actorx, GAME* game) {
     BOAT_DEMO_ACTOR* boat_demo = (BOAT_DEMO_ACTOR*)actorx;

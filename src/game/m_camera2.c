@@ -9,6 +9,7 @@
 #include "m_collision_bg.h"
 #include "m_scene_table.h"
 #include "m_common_data.h"
+#include "m_field_make.h"
 
 #if VERSION >= VER_GAFU01_00
 #define CAMERA2_STAFFROLL_CENTER_X_ROT_STEP_DIVISOR 3333
@@ -227,16 +228,21 @@ static f32 Camera2_BorderSize(GAME_PLAY* play) {
     int type = mFI_GET_TYPE(mFI_GetFieldId());
     f32 size = 110.0f;
 
-    switch (type) {
-        case mFI_FIELD_NPCROOM0:
-            size = 110.0f;
-            break;
-        case mFI_FIELD_ROOM0:
-            size = 110.0f;
-            break;
-        case mFI_FIELD_PLAYER0_ROOM:
-            size = 110.0f;
-            break;
+    if (Save_Get(scene_no) == SCENE_FG && mPlib_IsWadeDisabled() &&
+        (play->block_table.block_x != 1 && play->block_table.block_x != FG_BLOCK_X_NUM)) {
+        size = 0.0f;
+    } else {
+        switch (type) {
+            case mFI_FIELD_NPCROOM0:
+                size = 110.0f;
+                break;
+            case mFI_FIELD_ROOM0:
+                size = 110.0f;
+                break;
+            case mFI_FIELD_PLAYER0_ROOM:
+                size = 110.0f;
+                break;
+        }
     }
 
     return size;
@@ -263,6 +269,12 @@ static void Camera2_GetBorderScale(GAME_PLAY* play, f32 scale, f32* x_min, f32* 
 
     if (Camera2_InDoorCheck()) {
         *z_min += -mFI_UT_WORLDSIZE_Z_F;
+    } else if (mPlib_IsWadeDisabled()) {
+        if (play->block_table.block_x == FG_BLOCK_X_NUM) {
+            *x_max = entrance_pos.x;
+        } else if (play->block_table.block_x == 1) {
+            *x_min = entrance_pos.x + mFI_GetBlockWidth();
+        }
     }
 }
 
@@ -489,7 +501,7 @@ static void Camera2_Get_GoalDistanceAndDirection(GAME_PLAY* play, f32* dist, s_x
     }
 
     if (main_index == CAMERA2_PROCESS_NORMAL || main_index == CAMERA2_PROCESS_WADE) {
-        if (Camera2_InDoorCheck() == FALSE && (camera->flags & 1) == 0) {
+        if (Camera2_InDoorCheck() == FALSE && (!mPlib_IsWadeDisabled() && (camera->flags & 1) == 0)) {
             Camera2_Normal_Swing(play, dist, dir);
         }
     }
@@ -1300,12 +1312,12 @@ static void Camera2_main_Normal_SetEndCenterPos_fromPlayer(GAME_PLAY* play, xyz_
     Camera2_GetBorderScale(play, scale, &border_x0, &border_x1, &border_z0, &border_z1);
     *end_center_pos = player->actor_class.eye.position;
 
-    if (mPlib_get_player_actor_main_index((GAME*)play) == 114) {
+    if (mPlib_get_player_actor_main_index((GAME*)play) == mPlayer_INDEX_DEMO_GETON_BOAT_WAIT) {
         if (mFI_Wpos2BlockNum(&block_x, &block_z, player->actor_class.world.position)) {
             if (block_x == 5) {
                 if (block_z == 7) {
-                    end_center_pos->z +=
-                        55.0f; // extra Z distance when travelling in Kapp'n's boat in the acre below the dock?
+                    /* Extra Z distance when travelling in Kapp'n's boat below the dock. */
+                    end_center_pos->z += 55.0f;
                 }
             }
         }
@@ -1325,20 +1337,24 @@ static void Camera2_main_Normal_SetEndCenterPos_fromPlayer(GAME_PLAY* play, xyz_
         end_center_pos->z = z_midpoint + (z_scale * z_left) * 0.25f;
     }
 
-    if (mFI_GetBlockWidth() < scale * 330.0f || border_x0 < border_x1) {
-        end_center_pos->x = (border_x0 + border_x1) * 0.5f;
-    } else if (end_center_pos->x > border_x0) {
-        end_center_pos->x = border_x0;
-    } else if (end_center_pos->x < border_x1) {
-        end_center_pos->x = border_x1;
+    if (!mPlib_IsWadeDisabled() || play->block_table.block_x == 1 || play->block_table.block_x == FG_BLOCK_X_NUM) {
+        if (mFI_GetBlockWidth() < scale * 330.0f || border_x0 < border_x1) {
+            end_center_pos->x = (border_x0 + border_x1) * 0.5f;
+        } else if (end_center_pos->x > border_x0) {
+            end_center_pos->x = border_x0;
+        } else if (end_center_pos->x < border_x1) {
+            end_center_pos->x = border_x1;
+        }
     }
 
-    if (mFI_GetBlockHeight() < scale * 250.0f || border_z1 < border_z0) {
-        end_center_pos->z = (border_z0 + border_z1) * 0.5f;
-    } else if (end_center_pos->z < border_z0) {
-        end_center_pos->z = border_z0;
-    } else if (end_center_pos->z > border_z1) {
-        end_center_pos->z = border_z1;
+    if (!mPlib_IsWadeDisabled()) {
+        if (mFI_GetBlockHeight() < scale * 250.0f || border_z1 < border_z0) {
+            end_center_pos->z = (border_z0 + border_z1) * 0.5f;
+        } else if (end_center_pos->z < border_z0) {
+            end_center_pos->z = border_z0;
+        } else if (end_center_pos->z > border_z1) {
+            end_center_pos->z = border_z1;
+        }
     }
 
     if (Camera2_InDoorCheck()) {

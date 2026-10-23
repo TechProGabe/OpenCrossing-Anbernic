@@ -28,9 +28,17 @@ static int Player_actor_CulcAnimation_Demo_geton_boat_wait(ACTOR* actorx) {
     return Player_actor_CulcAnimation_Base2(actorx, &dummy);
 }
 
-static void Player_actor_request_proc_index_fromDemo_geton_boat_wait(ACTOR* actorx) {
+static void Player_actor_request_proc_index_fromDemo_geton_boat_wait(ACTOR* actorx, GAME* game) {
+    GAME_PLAY* play = (GAME_PLAY*)game;
+    int bx;
+    int bz;
     s16 angle_y = actorx->shape_info.rotation.y;
     f32 speed;
+
+    if (mFI_Wpos2BlockNum(&bx, &bz, actorx->world.position) &&
+        (play->block_table.block_x != bx || play->block_table.block_z != bz)) {
+        mFI_SetBearActor(play, actorx->world.position, TRUE);
+    }
 
     if (Common_Get(clip).demo_clip2 != NULL && Common_Get(clip).demo_clip2->type == mDemo_CLIP_TYPE_BOAT_DEMO) {
         BOAT_DEMO_ACTOR* boat_demo = (BOAT_DEMO_ACTOR*)Common_Get(clip).demo_clip2->demo_class;
@@ -56,5 +64,5 @@ static void Player_actor_main_Demo_geton_boat_wait(ACTOR* actorx, GAME* game) {
     Player_actor_recover_lean_angle(actorx);
     Player_actor_set_eye_pattern_normal(actorx);
     Player_actor_Item_main(actorx, game);
-    Player_actor_request_proc_index_fromDemo_geton_boat_wait(actorx);
+    Player_actor_request_proc_index_fromDemo_geton_boat_wait(actorx, game);
 }

@@ -86,9 +86,11 @@ static void aPOFF_actor_ct(ACTOR* actor, GAME* game) {
 
     actor->world.position.x = actor->world.position.x + -20.0f;
     actor->world.position.z = actor->world.position.z + 20.0f;
-    actor->cull_width = 500.0f;
-    actor->cull_distance = 500.0f;
-
+    if (!g_mPlib_wade_disabled) {
+        /* original cull override; borderless uses the wide Actor_ct default */
+        actor->cull_width = 500.0f;
+        actor->cull_distance = 500.0f;
+    }
     office->request_type = 0;
     aPOFF_setup_animation(office, 0.0f);
     aPOFF_setup_action(office, aPOFF_ACTION_WAIT);

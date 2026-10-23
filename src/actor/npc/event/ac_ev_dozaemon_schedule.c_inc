@@ -12,10 +12,12 @@ static void aEDZ_think_main_proc(NPC_ACTOR* nactorx, GAME_PLAY* play) {
 
 static void aEDZ_think_init_proc(NPC_ACTOR* nactorx, GAME_PLAY* play) {
     DOZAEMON_ACTOR* dozaemon = (DOZAEMON_ACTOR*)nactorx;
+    mEv_dozaemon_c* dozaemon_ev = (mEv_dozaemon_c*)mEv_get_save_area(mEv_EVENT_DOZAEMON, 13);
+    int think_idx = (dozaemon_ev->flags & aEDZ_SAVE_FLAG_WAKEUP) != 0 ? aEDZ_THINK_WANDER : aEDZ_THINK_TAORERU;
 
     dozaemon->npc_class.actor_class.status_data.weight = MASSTYPE_IMMOVABLE;
     dozaemon->npc_class.condition_info.hide_request = FALSE;
-    aEDZ_setup_think_proc(dozaemon, play, aEDZ_THINK_TAORERU);
+    aEDZ_setup_think_proc(dozaemon, play, think_idx);
 }
 
 static void aEDZ_normal_wait_init(DOZAEMON_ACTOR* dozaemon, GAME_PLAY* play) {

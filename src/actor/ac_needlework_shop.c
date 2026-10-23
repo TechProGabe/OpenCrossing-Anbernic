@@ -79,10 +79,12 @@ static void aNW_actor_ct(ACTOR* actor, GAME* game) {
 
     actor->world.position.x = actor->world.position.x + -20.0f;
     actor->world.position.z = actor->world.position.z + 20.0f;
-    actor->cull_height = 800.0f;
-    actor->cull_radius = 400.0f;
-    actor->cull_width = 450.0f;
-
+    if (!g_mPlib_wade_disabled) {
+        /* original cull override; borderless uses the wide Actor_ct default */
+        actor->cull_height = 800.0f;
+        actor->cull_radius = 400.0f;
+        actor->cull_width = 450.0f;
+    }
     shop->request_type = 0;
     aNW_setup_animation(shop, 0.0f);
     aNW_setup_action(shop, aNW_ACTION_WAIT);

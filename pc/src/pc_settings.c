@@ -42,6 +42,7 @@ PCSettings g_pc_settings = {
     .reduce_acre_draw       = 0,
     .particle_quality       = 4,
     .disable_resetti        = 0,
+    .borderless_acres       = 1,  /* endless acres on by default */
     .nes_aspect             = 1,
 };
 
@@ -103,6 +104,10 @@ static const char* DEFAULT_SETTINGS =
     "\n"
     "# Camera zoom (L + D-pad): 0 = off, 1 = on\n"
     "zoom_enabled = 1\n"
+    "\n"
+    "# Endless acres: 1 = the camera follows you smoothly between acres,\n"
+    "# 0 = the original acre-by-acre camera (draws a little less)\n"
+    "borderless_acres = 1\n"
     "\n"
     "[Debug]\n"
     "# Verbose logging: 0 = off, 1 = on (log to console)\n"
@@ -221,6 +226,8 @@ static void apply_setting(const char* key, const char* value) {
         if (val >= 0 && val <= 4) g_pc_settings.particle_quality = val;
     } else if (strcmp(key, "disable_resetti") == 0) {
         if (val == 0 || val == 1) g_pc_settings.disable_resetti = val;
+    } else if (strcmp(key, "borderless_acres") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.borderless_acres = val;
     } else if (strcmp(key, "nes_aspect") == 0) {
         if (val == 0 || val == 1) g_pc_settings.nes_aspect = val;
     }
@@ -331,10 +338,29 @@ void pc_settings_save(void) {
     fprintf(f, "# Disable Mr. Resetti: 0 = normal, 1 = disable\n");
     fprintf(f, "disable_resetti = %d\n", g_pc_settings.disable_resetti);
     fprintf(f, "\n");
+    fprintf(f, "# Endless acres: 1 = the camera follows you smoothly between acres,\n");
+    fprintf(f, "# 0 = the original acre-by-acre camera (draws a little less)\n");
+    fprintf(f, "borderless_acres = %d\n", g_pc_settings.borderless_acres);
+    fprintf(f, "\n");
     fprintf(f, "# NES emulator aspect ratio: 0 = stretch to fullscreen, 1 = 4:3 pillarbox\n");
     fprintf(f, "nes_aspect = %d\n", g_pc_settings.nes_aspect);
     fclose(f);
     printf("[Settings] Saved %s\n", SETTINGS_FILE);
+}
+
+/* Endless acres (upstream calls them borderless acres): m_player_lib's
+ * g_mPlib_wade_disabled turns off the acre-edge "wade" camera scroll.
+ * Turning it on mid-game asks birth control to spawn the neighbouring
+ * acres' actors right away. Safe to call any time. */
+void pc_settings_apply_borderless_acres(void) {
+    extern int g_mPlib_wade_disabled;
+    extern void aBC_RequestNearbyRefresh(void);
+    int enabled = g_pc_settings.borderless_acres != 0;
+
+    if (enabled && !g_mPlib_wade_disabled) {
+        aBC_RequestNearbyRefresh();
+    }
+    g_mPlib_wade_disabled = enabled;
 }
 
 int pc_settings_get_nes_aspect(void) {
@@ -395,6 +421,8 @@ void pc_settings_autodetect_resolution(void) {
 }
 
 void pc_settings_apply(void) {
+    pc_settings_apply_borderless_acres();
+
     if (!g_pc_window) return;
 
     /* Resolve window size from preset (unless custom) */
@@ -431,6 +459,7 @@ void pc_settings_load(void) {
     FILE* f = fopen(SETTINGS_FILE, "r");
     if (!f) {
         write_defaults(SETTINGS_FILE);
+        pc_settings_apply_borderless_acres();
         printf("[Settings] Created default %s\n", SETTINGS_FILE);
         return;
     }
@@ -455,6 +484,7 @@ void pc_settings_load(void) {
         }
     }
     fclose(f);
+    pc_settings_apply_borderless_acres();
     /* Apply fps_target to global immediately (window not open yet at load time,
      * but g_pc_fps_target must be set before the game loop starts) */
     {

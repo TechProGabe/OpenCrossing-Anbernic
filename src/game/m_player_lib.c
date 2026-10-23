@@ -12,6 +12,12 @@
 #include "pc_bswap.h"
 #endif
 
+int g_mPlib_wade_disabled = FALSE;
+
+extern BOOL mPlib_IsWadeDisabled(void) {
+    return g_mPlib_wade_disabled && mEv_CheckTitleDemo() <= 0;
+}
+
 extern cKF_Animation_R_c cKF_ba_r_ply_1_wait1;
 extern cKF_Animation_R_c cKF_ba_r_ply_1_walk1;
 extern cKF_Animation_R_c cKF_ba_r_ply_1_axe1;
@@ -3707,6 +3713,14 @@ extern int mPlib_check_player_actor_main_index_OutDoorMove2(GAME* game) {
 }
 
 extern int mPlib_check_player_actor_main_index_AllWade(GAME* game) {
+    if (mPlib_IsWadeDisabled()) {
+        xyz_t end_pos;
+
+        if (GET_PLAYER_ACTOR_GAME(game)->Get_WadeEndPos_proc(game, &end_pos)) {
+            return TRUE;
+        }
+    }
+
     if (mPlib_get_player_actor_main_index(game) == mPlayer_INDEX_WADE ||
         mPlib_get_player_actor_main_index(game) == mPlayer_INDEX_DEMO_WADE ||
         mPlib_get_player_actor_main_index(game) == mPlayer_INDEX_WADE_SNOWBALL ||

@@ -53,8 +53,11 @@ static void aKOI_setup_action(KOINOBORI_ACTOR* actor, int action);
 static void aKOI_actor_ct(ACTOR* actor, GAME* game) {
     KOINOBORI_ACTOR* koinobori = (KOINOBORI_ACTOR*)actor;
 
-    actor->cull_height = 830.0f;
-    actor->cull_radius = 480.0f;
+    if (!g_mPlib_wade_disabled) {
+        /* original cull override; borderless uses the wide Actor_ct default */
+        actor->cull_height = 830.0f;
+        actor->cull_radius = 480.0f;
+    }
 
     cKF_SkeletonInfo_R_ct(&koinobori->structure_class.keyframe, &cKF_bs_r_obj_e_koinobori, NULL, koinobori->structure_class.work_area, koinobori->structure_class.morph_area);
     aKOI_setup_action(koinobori, aKOI_ACTION_WAIT);

@@ -10,6 +10,9 @@
 extern "C" {
 #endif
 
+extern int g_mPlib_wade_disabled;
+
+extern BOOL mPlib_IsWadeDisabled(void);
 extern cKF_Animation_R_c* mPlib_Get_Pointer_Animation(int anim_idx);
 extern int mPlib_Get_BasicPlayerAnimeIndex_fromItemKind(int item_kind);
 extern int mPlib_Get_BasicPartTableIndex_fromAnimeIndex(int anim_idx);

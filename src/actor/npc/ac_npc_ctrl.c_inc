@@ -276,13 +276,12 @@ static int aNPC_setupNpc_check(s8 idx, mActor_name_t name) {
 }
 
 static int aNPC_setupActor_sub(GAME_PLAY* play, s8 idx, mActor_name_t name, s16 profile, xyz_t* pos, s16 mvlist_no,
-                               s16 arg) {
+                               s16 arg, int bx, int bz) {
     int ret = FALSE;
 
     if (aNPC_setupNpc_check(idx, name) == TRUE) {
         if (Actor_info_make_actor(&play->actor_info, (GAME*)play, profile, pos->x, pos->y, pos->z, 0, 0, 0,
-                                  play->block_table.block_x, play->block_table.block_z, mvlist_no, name, arg, idx,
-                                  -1) != NULL) {
+                                  bx, bz, mvlist_no, name, arg, idx, -1) != NULL) {
             ret = TRUE;
         }
     }
@@ -516,7 +515,7 @@ static int aNPC_setupActor_proc(GAME_PLAY* play, mActor_name_t name, s8 idx, int
         pos.y = mCoBG_GetBgY_OnlyCenter_FromWpos(pos, 0.0f);
     }
 
-    return aNPC_setupActor_sub(play, idx, name, profile, &pos, mvlist_no, arg);
+    return aNPC_setupActor_sub(play, idx, name, profile, &pos, mvlist_no, arg, bx, bz);
 }
 
 #ifndef aNPC_NPC2

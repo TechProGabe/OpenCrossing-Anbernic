@@ -109,12 +109,12 @@ static void aDUM_wait(DUMP_ACTOR* dump, GAME_PLAY* play) {
 
     xyz_t_move(&pos, &actor->world.position);
 
-    if ((mDemo_Check(7, actor) != 1) && (player != NULL) && (mDemo_Get_talk_actor() == NULL)) {
+    if ((mDemo_Check(mDemo_TYPE_TALK, actor) != TRUE) && (player != NULL) && (mDemo_Get_talk_actor() == NULL)) {
 
         if (player->actor_class.world.position.z >= pos.z) {
 
-            if (ABS(actor->player_angle_y) < 0x2000) {
-                mDemo_Request(7, actor, aDUM_set_talk_info);
+            if (ABS(actor->player_angle_y) < DEG2SHORT_ANGLE2(45.0f)) {
+                mDemo_Request(mDemo_TYPE_TALK, actor, aDUM_set_talk_info);
             }
         }
     }
@@ -131,25 +131,13 @@ static void aDUM_actor_move(ACTOR* actor, GAME* game) {
     GAME_PLAY* play = (GAME_PLAY*)game;
     DUMP_ACTOR* dump = (DUMP_ACTOR*)actor;
 
-    PLAYER_ACTOR* player = get_player_actor_withoutCheck(play);
-
-    int dbx, dbz, pbx, pbz;
-
-    mFI_Wpos2BlockNum(&dbx, &dbz, actor->world.position);
-    mFI_Wpos2BlockNum(&pbx, &pbz, player->actor_class.world.position);
-
-    if ((mDemo_Check(1, &player->actor_class) == 0) && (mDemo_Check(5, &player->actor_class) == 0) &&
-        (mDemo_Check(0x10, &player->actor_class) == 0) && ((dbx != pbx) || (dbz != pbz))) {
-        Actor_delete(actor);
-    } else {
-        dump->proc(dump, play);
-    }
+    dump->proc(dump, play);
 }
 
 static void aDUM_actor_init(ACTOR* actor, GAME* game) {
     DUMP_ACTOR* dump = (DUMP_ACTOR*)actor;
 
-    mFI_SetFG_common(0xF115, actor->home.position, 0);
+    mFI_SetFG_common(DUMMY_DUMP, actor->home.position, FALSE);
     aDUM_actor_move(actor, game);
     actor->mv_proc = aDUM_actor_move;
 }

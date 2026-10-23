@@ -187,23 +187,23 @@ static int aKKR_ctrl_light(STRUCTURE_ACTOR* kamakura) {
 static void aKKR_actor_move(ACTOR* actor, GAME* game) {
     GAME_PLAY* play;
     STRUCTURE_ACTOR* kamakura;
-    PLAYER_ACTOR* player;
-    int bx1;
-    int bz1;
-    int bx2;
-    int bz2;
+    ACTOR* player;
+    int kamakura_bx;
+    int kamakura_bz;
+    int player_bx;
+    int player_bz;
     f32 window;
 
     play = (GAME_PLAY*)game;
     kamakura = (STRUCTURE_ACTOR*)actor;
-    player = GET_PLAYER_ACTOR(play);
+    player = GET_PLAYER_ACTOR_ACTOR(play);
 
-    mFI_Wpos2BlockNum(&bx1, &bz1, actor->world.position);
-    mFI_Wpos2BlockNum(&bx2, &bz2, player->actor_class.world.position);
+    mFI_Wpos2BlockNum(&kamakura_bx, &kamakura_bz, actor->world.position);
+    mFI_Wpos2BlockNum(&player_bx, &player_bz, player->world.position);
 
-    if ((mDemo_Check(mDemo_TYPE_SCROLL, &player->actor_class) == FALSE) &&
-        (mDemo_Check(mDemo_TYPE_SCROLL2, &player->actor_class) == FALSE) &&
-        (mDemo_Check(mDemo_TYPE_SCROLL3, &player->actor_class) == FALSE) && ((bx1 != bx2) || (bz1 != bz2))) {
+    if ((mDemo_Check(mDemo_TYPE_SCROLL, player) == FALSE) && (mDemo_Check(mDemo_TYPE_SCROLL2, player) == FALSE) &&
+        (mDemo_Check(mDemo_TYPE_SCROLL3, player) == FALSE) &&
+        (ABS(kamakura_bx - player_bx) > 1 || ABS(kamakura_bz - player_bz) > 1)) {
         Actor_delete(actor);
     } else {
         kamakura->action_proc(kamakura, play);

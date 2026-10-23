@@ -79,7 +79,7 @@ That's what the upstream PC port is for. See the credits below.
 ## Saves, settings and texture packs
 
 - **Saves** are standard GCI files and work with Dolphin in both directions. Slot A lives in `save/card_a/` and Slot B in `save/card_b/`. With the game closed you can copy them out to back up, delete them for a fresh town, or drop in a Dolphin export. Saves are checksum checked on load, so use a save editor that fixes the checksum.
-- **Settings** are in the in-game menu or `settings.ini`: FPS target, render scale, shadow, particle and acre quality, culling distance, volume and button bindings.
+- **Settings** are in the in-game menu or `settings.ini`: FPS target, render scale, shadow, particle and acre quality, culling distance, volume and button bindings. Endless acres is on by default, so the camera follows you smoothly from acre to acre instead of stopping at each edge. Turn it off under Video if you want the original camera.
 - **Texture packs** use the Dolphin format (XXHash64 DDS) and go in `texture_pack/`. The [community HD pack](https://forums.dolphin-emu.org/Thread-animal-crossing-hd-texture-pack-version-23-feb-22nd-2026) works, but it costs some performance.
 
 ## Building

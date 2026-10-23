@@ -100,7 +100,6 @@ static void aSHOP_actor_ct(ACTOR* actor, GAME* game) {
     actor->talk_distance = 80.0f;
     actor->cull_width = 550.0f;
     actor->cull_radius = 550.0f;
-
     if (mSP_ShopOpen() != 2) {
         action = aSHOP_ACTION_CLOSE_WAIT;
     }

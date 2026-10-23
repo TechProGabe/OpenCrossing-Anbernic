@@ -53,6 +53,7 @@ enum {
     MI_VSYNC,
     MI_MSAA,
     MI_ZOOM_ENABLED,
+    MI_ENDLESS_ACRES,
     MI_FPS_TARGET,
     MI_RENDER_SCALE,
     MI_WINDOW_SIZE,
@@ -89,6 +90,7 @@ static const char* menu_labels[MI_COUNT] = {
     [MI_VSYNC]           = "V-Sync",
     [MI_MSAA]            = "MSAA",
     [MI_ZOOM_ENABLED]    = "Camera Zoom",
+    [MI_ENDLESS_ACRES]   = "Endless Acres",
     [MI_FPS_TARGET]      = "FPS Target",
     [MI_RENDER_SCALE]    = "Render Scale",
     [MI_WINDOW_SIZE]     = "Render Res",
@@ -133,6 +135,7 @@ static const int menu_item_tab[MI_COUNT] = {
     [MI_VSYNC]           = TAB_VIDEO,
     [MI_MSAA]            = TAB_VIDEO,
     [MI_ZOOM_ENABLED]    = TAB_VIDEO,
+    [MI_ENDLESS_ACRES]   = TAB_VIDEO,
     [MI_FPS_TARGET]      = TAB_VIDEO,
     [MI_RENDER_SCALE]    = TAB_VIDEO,
     [MI_WINDOW_SIZE]     = TAB_VIDEO,
@@ -267,6 +270,7 @@ static void menu_get_value(int item, char* buf, int sz) {
     }
     case MI_DISABLE_RESETTI: snprintf(buf, sz, "%s", g_pc_settings.disable_resetti ? "ON" : "OFF"); break;
     case MI_NES_ASPECT:      snprintf(buf, sz, "%s", g_pc_settings.nes_aspect ? "4:3" : "Stretch"); break;
+    case MI_ENDLESS_ACRES:   snprintf(buf, sz, "%s", g_pc_settings.borderless_acres ? "ON" : "OFF"); break;
     default:
         if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT) {
             int kb_idx = item - MI_KB_BASE;
@@ -467,6 +471,10 @@ static void menu_adjust(int item, int dir) {
     }
     case MI_DISABLE_RESETTI: g_pc_settings.disable_resetti ^= 1; break;
     case MI_NES_ASPECT:      g_pc_settings.nes_aspect ^= 1; break;
+    case MI_ENDLESS_ACRES:
+        g_pc_settings.borderless_acres ^= 1;
+        pc_settings_apply_borderless_acres(); /* takes effect right away */
+        break;
     default:
         if (item >= MI_KB_BASE && item < MI_KB_BASE + KB_COUNT && dir == 1) {
             ctrl_capture_idx = item - MI_KB_BASE;

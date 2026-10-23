@@ -260,7 +260,12 @@ static void Player_actor_move_other_func2(ACTOR* actor, GAME* game) {
     Player_actor_sound_SetStatus(actor);
     Player_actor_Set_Indoor_Camera_Index(actor, game);
     Player_actor_check_forward(actor, game);
-    mFI_SetPlayerWade(game);
+
+    if (!l_skip_other_func_set_wade) {
+        mFI_SetPlayerWade(game);
+    } else {
+        l_skip_other_func_set_wade = FALSE;
+    }
     Player_actor_check_little_shake_tree(actor, game);
     Player_actor_check_shake_tree_timer(actor);
     Player_actor_check_pitfall(actor, game);

@@ -106,6 +106,8 @@ static STRUCTURE_ACTOR* aSTR_setupActor_proc(GAME* game, mActor_name_t structure
     GAME_PLAY* play = (GAME_PLAY*)game;
     s16 profile;
     xyz_t pos;
+    int bx;
+    int bz;
 
     if (structure_name < NPC_HOUSE_END) {
         mNpc_SearchAnimalinfo(Save_Get(animals), NPC_HOUSE_ID_TO_NPC_ID(structure_name), ANIMAL_NUM_MAX);
@@ -123,10 +125,10 @@ static STRUCTURE_ACTOR* aSTR_setupActor_proc(GAME* game, mActor_name_t structure
     pos.x = x;
     pos.z = z;
     pos.y = mCoBG_GetBgY_OnlyCenter_FromWpos2(pos, 0.0f);
+    mFI_Wpos2BlockNum(&bx, &bz, pos);
 
     str_actor = (STRUCTURE_ACTOR*)Actor_info_make_actor(&play->actor_info, game, profile, pos.x, pos.y, pos.z, 0, 0, 0,
-                                                        play->block_table.block_x, play->block_table.block_z, -1,
-                                                        structure_name, arg, -1, -1);
+                                                        bx, bz, -1, structure_name, arg, -1, -1);
     if (str_actor != NULL) {
         mFI_SetFG_common(RSV_NO, pos, FALSE);
     }

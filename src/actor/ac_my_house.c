@@ -181,9 +181,11 @@ static void aMHS_actor_ct(ACTOR* actorx, GAME* game) {
 
     actorx->shape_info.rotation.y = angle_table[side_idx];
     actorx->world.angle.z = DEG2SHORT_ANGLE(0.0f);
-    actorx->cull_width = 450.0f;
-    actorx->cull_radius = 450.0f;
-
+    if (!g_mPlib_wade_disabled) {
+        /* original cull override; borderless uses the wide Actor_ct default */
+        actorx->cull_width = 450.0f;
+        actorx->cull_radius = 450.0f;
+    }
     if (mPr_CheckFishCompleteTalk(mHS_get_pl_no(house_idx))) {
         actorx->speed = TRUE; // Store fish weathervane bool as... speed?
     }
