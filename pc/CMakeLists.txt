@@ -107,6 +107,12 @@ else()
     endif()
 endif()
 
+# ARM: unwind tables so the crash handler's backtrace() can walk C frames
+# (pc_main.c). Tables only; generated code is unchanged.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+    add_compile_options(-funwind-tables)
+endif()
+
 # =============================================================================
 # Include paths
 # =============================================================================
