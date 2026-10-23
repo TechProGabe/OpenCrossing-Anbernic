@@ -107,7 +107,7 @@ extern int g_pc_render_h;     /* render height = window_h * render_scale/100 */
 extern int g_pc_scale_mode;   /* 0=stretch, 1=center */
 
 /* --- Camera zoom --- */
-extern float g_pc_zoom;  /* 1.0 = default, >1.0 = zoomed out, <1.0 = zoomed in */
+extern float g_pc_zoom;  /* 1.0 = default; scales the 3D projection: >1.0 zoomed in, <1.0 zoomed out (wider) */
 #define PC_ZOOM_MIN  0.5f
 #define PC_ZOOM_MAX  2.0f
 #define PC_ZOOM_STEP 0.02f
