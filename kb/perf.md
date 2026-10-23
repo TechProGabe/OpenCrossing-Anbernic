@@ -261,6 +261,16 @@ GC frustum test as upstream did, widened by 1/zoom when zoomed out.
 Kill switch PC_NO_ACTOR_CULL=1. Expect the biggest town gain of the
 round; watch for actors popping at screen edges.
 
+## Hardware test 4 (2026-10-23) → build 5
+
+Avg 58.6 fps, 5 of 201 samples < 45, no long hangs: actor culling +
+logging fixes worked. Left: every scene change stalls 70-115 ms (house
+exit, title-demo cuts), outside game_main so [PROF] never caught it.
+Build 5 logs a [SCENE] line per change (dt, ct, read/field/actors/museum,
+emu64 texture-cache reset) to pick the target. NES audio sounded tinny:
+AUDIO_LOWERFREQ removed again (LTO was the real NES win) and the
+resampler is now a box filter (averages the ~7 APU samples per output).
+
 ## Remaining ideas (unimplemented)
 
 - Decode-ahead: warm texture cache during acre-transition wipe (needs a hook
