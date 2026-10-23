@@ -229,22 +229,30 @@ static void fixnes_capture_audio(void) {
     if (target_frames > FIXNES_AUDIO_BUF_SIZE)
         target_frames = FIXNES_AUDIO_BUF_SIZE;
 
-    /* Linear interpolation (16.16 fixed point): nearest-sample picking
-     * aliases the square waves into a rough, gritty sound. */
+    /* Box-filter downsample: each output sample is the average of the APU
+     * samples it covers (~7 at 223.7 kHz -> 32 kHz). Point sampling, even
+     * interpolated, folds everything above 16 kHz back down as a thin,
+     * metallic tone; averaging is a cheap low-pass that removes most of it. */
     fixnes_audio_pos = 0;
-    if (num_frames > 1 && target_frames > 0) {
-        uint32_t step = (uint32_t)(((uint64_t)(num_frames - 1) << 16) / (uint32_t)target_frames);
-        uint32_t pos = 0;
+    if (num_frames > 0 && target_frames > 0) {
+        int start = 0;
         for (int i = 0; i < target_frames; i++) {
-            int s0 = (int)(pos >> 16);
-            int frac = (int)(pos & 0xFFFF);
-            int s1 = s0 + 1 < num_frames ? s0 + 1 : s0;
-            for (int ch = 0; ch < 2; ch++) {
-                int a = src[s0 * 2 + ch], b = src[s1 * 2 + ch];
-                fixnes_audio_buf[fixnes_audio_pos * 2 + ch] = (int16_t)(a + (int)(((int64_t)(b - a) * frac) >> 16));
+            int end = (int)((int64_t)(i + 1) * num_frames / target_frames);
+            if (end <= start) end = start + 1; /* upsampling: hold the sample */
+            if (end > num_frames) end = num_frames;
+            if (start >= num_frames) start = num_frames - 1;
+            {
+                int32_t sum_l = 0, sum_r = 0;
+                int n = end - start;
+                for (int k = start; k < end; k++) {
+                    sum_l += src[k * 2 + 0];
+                    sum_r += src[k * 2 + 1];
+                }
+                fixnes_audio_buf[fixnes_audio_pos * 2 + 0] = (int16_t)(sum_l / n);
+                fixnes_audio_buf[fixnes_audio_pos * 2 + 1] = (int16_t)(sum_r / n);
             }
             fixnes_audio_pos++;
-            pos += step;
+            start = end;
         }
     }
 

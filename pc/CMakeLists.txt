@@ -621,11 +621,12 @@ set(FIXNES_SOURCES
 )
 # Third-party, no decomp UB: optimize, and inline the per-cycle hot paths.
 # No COL_TEX_BSWAP: plain RGB565 output uploads as-is on GLES.
-# AUDIO_LOWERFREQ: fixNES's own low-power mode, the APU mixes at 55.9 kHz
-# instead of 223.7 kHz (we resample to 32 kHz anyway).
+# Not AUDIO_LOWERFREQ: that low-power mode updates the APU channels a quarter
+# as often and sounded tinny on device (hardware test 4); with LTO the full
+# 223.7 kHz rate has the headroom.
 set_source_files_properties(${FIXNES_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-w;-O2"
-    COMPILE_DEFINITIONS "DO_INLINE_ATTRIBS=1;AUDIO_LOWERFREQ=1"
+    COMPILE_DEFINITIONS "DO_INLINE_ATTRIBS=1"
 )
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nes_fixnes.c PROPERTIES
     COMPILE_OPTIONS "-O2"
