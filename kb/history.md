@@ -170,3 +170,13 @@
   - Still needs a device: fishing-tourney placement (retest), one-time
     dock/home-menu stalls, inventory flicker, NES fps/audio, endless
     acres fps.
+- **2026-10-23 hardware test 1** (RG-34XX SP, 100% town save): NES runs
+  fine, Clu Clu Land D works, NES audio slightly choppy, two settings
+  menus confusing, ~40 fps dip for a moment on walking out of a house
+  (also in v0.5.0). log.txt had no perf lines (verbose was 0).
+  Round 3 answer: NES mix queue primed + rate control + linear
+  resample; one Options page (Xbox style) from title and Select; title
+  Start Game / Options / Exit to OS; loading screen with logo and
+  progress; Bells to Wallet on by default. House-exit dip: texture
+  cache ruled out (only cleared at shutdown); needs a verbose log
+  ([STUTTER] tex/gl/work split, [PROF] phase) before changing code.

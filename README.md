@@ -51,9 +51,9 @@ When reporting a bug, attach `ports/ac-gc/log.txt`, plus `crash.log` from the sa
 - **"No game disc image found" or "Wrong game version":** your disc image is missing from `ports/ac-gc/rom/` or isn't the USA `GAFE01` release.
 - **Black screen with no error:** that's a real bug. Please send the log.
 - **No audio:** quit and launch again. The first start after install sometimes comes up silent.
-- **Can't walk:** devices without an analog stick get D-pad walking automatically. To set it yourself, press Select, go to Control and turn on "Use Dpad as Joystick".
+- **Can't walk:** devices without an analog stick get D-pad walking automatically. To set it yourself, open Options (Select), go to Input and change "D-pad walks".
 - **Wrong resolution:** the panel is detected at launch. To force one, uncomment `window_width` and `window_height` in `ports/ac-gc/settings.ini`.
-- **Modded stock OS:** Select and Menu are swapped for all PortMaster games there. Menu opens settings and Select+Start quits.
+- **Modded stock OS:** Select and Menu are swapped for all PortMaster games there. Menu opens Options and Select+Start quits.
 - **Lid sleep acts weird on muOS clamshells:** that's a firmware quirk. Press power to wake.
 
 ## FAQ
@@ -79,13 +79,13 @@ That's what the upstream PC port is for. See the credits below.
 ## Saves, settings and texture packs
 
 - **Saves** are standard GCI files and work with Dolphin in both directions. Slot A lives in `save/card_a/` and Slot B in `save/card_b/`. With the game closed you can copy them out to back up, delete them for a fresh town, or drop in a Dolphin export. Saves are checksum checked on load, so use a save editor that fixes the checksum.
-- **Settings** are in the in-game menu or `settings.ini`. The GAME tab has the gameplay options:
-  - **Endless Acres** (on): the camera follows you smoothly from acre to acre instead of stopping at each edge.
-  - **Bells to Wallet** (off): bell bags you pick up go straight into your wallet when they fit.
-  - **Shop Upgrade** (on): Nook's can grow into Nookington's without a visitor from another town.
-  - **Disable Resetti** (off).
+- **Options** opens from the title screen, or with Select in game (the town pauses while it's open). Change a value with Left and Right, then pick Apply. The Game tab has the gameplay options:
+  - **Endless acres** (on): the camera follows you smoothly from acre to acre instead of stopping at each edge.
+  - **Bells to wallet** (on): bell bags you pick up go straight into your wallet when they fit.
+  - **Shop upgrade** (no visitor): Nook's can grow into Nookington's without a visitor from another town.
+  - **Resetti** (enabled).
 
-  The other tabs cover FPS target, render scale, shadow, particle and acre quality, culling distance, volume and button bindings. The D-pad also works in menus and speeds up text.
+  The other tabs cover FPS target, render scale, the FPS counter, volumes, controls and performance options. Everything is also in `settings.ini`, along with button rebinding in `keybindings.ini`. The D-pad works in menus and speeds up text.
 - **Texture packs** use the Dolphin format (XXHash64 DDS) and go in `texture_pack/`. The [community HD pack](https://forums.dolphin-emu.org/Thread-animal-crossing-hd-texture-pack-version-23-feb-22nd-2026) works, but it costs some performance.
 
 ## Building
