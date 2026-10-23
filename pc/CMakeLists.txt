@@ -33,6 +33,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -fno-delete-null-pointer-checks -fno-lifet
 # Options
 option(PC_CONSOLE "Show console window (disables -mwindows, useful for debugging)" OFF)
 option(PC_USE_GLES "Use OpenGL ES 3.2 instead of OpenGL 3.3" OFF)
+option(PC_LTO "Link-time optimization for fixNES and the renderer + emu64" ON)
+option(PC_OPT_MATH "-O2 on the game's matrix, trig and keyframe TUs" ON)
 
 # =============================================================================
 # 32-bit enforcement (required: JSystem casts pointers to u32)
@@ -563,6 +565,23 @@ set_source_files_properties(
     PROPERTIES COMPILE_OPTIONS "${DECOMP_C_WARN_FLAGS};-O2;-fno-strict-aliasing;-fwrapv;-fno-delete-null-pointer-checks;-fno-lifetime-dse;-fno-aggressive-loop-optimizations;-fno-strict-overflow"
 )
 
+# The game's matrix, trig and skeletal-animation math: every animated actor
+# runs through these every frame, on aligned Mtx/MtxF/float data, which is
+# why they're the safe next step after emu64 (the -O1 SIGBUS came from
+# unaligned decomp data being merged into LDRD/LDM loads). Same guards as
+# emu64. DEVICE-TEST GATE as above; -DPC_OPT_MATH=OFF is the kill switch.
+if(PC_OPT_MATH)
+    set_source_files_properties(
+        "${DECOMP_ROOT}/src/system/sys_matrix.c"
+        "${DECOMP_ROOT}/src/system/sys_math.c"
+        "${DECOMP_ROOT}/src/system/sys_math3d.c"
+        "${DECOMP_ROOT}/src/system/sys_math_atan.c"
+        "${DECOMP_ROOT}/src/c_keyframe.c"
+        "${DECOMP_ROOT}/src/game/m_skin_matrix.c"
+        PROPERTIES COMPILE_OPTIONS "${DECOMP_C_WARN_FLAGS};-O2;-fno-strict-aliasing;-fwrapv;-fno-delete-null-pointer-checks;-fno-lifetime-dse;-fno-aggressive-loop-optimizations;-fno-strict-overflow"
+    )
+endif()
+
 # =============================================================================
 # Windows resource file (sets process name in Task Manager)
 # =============================================================================
@@ -599,9 +618,11 @@ set(FIXNES_SOURCES
 )
 # Third-party, no decomp UB: optimize, and inline the per-cycle hot paths.
 # No COL_TEX_BSWAP: plain RGB565 output uploads as-is on GLES.
+# AUDIO_LOWERFREQ: fixNES's own low-power mode, the APU mixes at 55.9 kHz
+# instead of 223.7 kHz (we resample to 32 kHz anyway).
 set_source_files_properties(${FIXNES_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-w;-O2"
-    COMPILE_DEFINITIONS "DO_INLINE_ATTRIBS=1"
+    COMPILE_DEFINITIONS "DO_INLINE_ATTRIBS=1;AUDIO_LOWERFREQ=1"
 )
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nes_fixnes.c PROPERTIES
     COMPILE_OPTIONS "-O2"
@@ -712,6 +733,35 @@ endif()
 # Use -DPC_CONSOLE=ON to keep the console visible for debugging
 if(WIN32 AND NOT PC_CONSOLE)
     target_link_options(ac_pc PRIVATE -mwindows)
+endif()
+
+# =============================================================================
+# Link-time optimization, scoped
+# =============================================================================
+# fixNES runs cpuCycle/ppuCycle/apuCycle/mapperCycle once per NES CPU cycle
+# from pc_nes_fixnes.c, across translation units; emu64 calls the renderer's
+# per-vertex GX functions the same way. LTO lets those inline. Game TUs stay
+# out: they're unoptimized on purpose (see the -O2 regression note).
+# -DPC_LTO=OFF is the kill switch.
+if(PC_LTO AND NOT MSVC)
+    set(_PC_LTO_SOURCES
+        ${FIXNES_SOURCES}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nes_fixnes.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_gx.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_gx_tev.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_gx_texture.c
+        "${DECOMP_ROOT}/src/static/libforest/emu64/emu64.c"
+        "${DECOMP_ROOT}/src/static/libforest/emu64/emu64_utility.c"
+    )
+    foreach(_f ${_PC_LTO_SOURCES})
+        get_source_file_property(_opts ${_f} COMPILE_OPTIONS)
+        if(NOT _opts)
+            set(_opts "")
+        endif()
+        set_source_files_properties(${_f} PROPERTIES COMPILE_OPTIONS "${_opts};-flto")
+    endforeach()
+    # -O2 here sets the optimization for the LTO'd code only.
+    target_link_options(ac_pc PRIVATE -flto -O2)
 endif()
 
 # =============================================================================
