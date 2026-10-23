@@ -43,7 +43,7 @@ PCSettings g_pc_settings = {
     .particle_quality       = 4,
     .disable_resetti        = 0,
     .borderless_acres       = 1,  /* endless acres on by default */
-    .bells_to_wallet        = 0,
+    .bells_to_wallet        = 1,
     .shop_no_visitor        = 1,  /* matches every build since March (the check was removed) */
     .nes_aspect             = 1,
 };
@@ -112,14 +112,14 @@ static const char* DEFAULT_SETTINGS =
     "borderless_acres = 1\n"
     "\n"
     "# Bell bags you pick up go straight to your wallet when they fit: 0 = off, 1 = on\n"
-    "bells_to_wallet = 0\n"
+    "bells_to_wallet = 1\n"
     "\n"
     "# Shop upgrade: 1 = Nookington's needs no visitor from another town, 0 = original rule\n"
     "shop_no_visitor = 1\n"
     "\n"
     "[Debug]\n"
     "# Verbose logging: 0 = off, 1 = on (log to console)\n"
-    "verbose = 1\n"
+    "verbose = 0\n"
     "\n"
     "[Controls]\n"
     "# D-pad also drives main analog stick: 0 = off, 1 = on, 2 = auto (on when controller has no analog stick)\n"
