@@ -29,8 +29,8 @@ set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${_oc_includes})
 
 # libSDL2 pulls in X11, Wayland, PulseAudio and friends. They exist on the
 # device, not here, so let the linker leave libSDL2's own imports unresolved.
-set(CMAKE_EXE_LINKER_FLAGS_INIT
-    "-Wl,--allow-shlib-undefined -L${OC_SYSROOT}/usr/lib/arm-linux-gnueabihf")
+# (SDL2 and GLESv2 are linked by full path, so no -L is needed.)
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-Wl,--allow-shlib-undefined")
 
 # Re-root the /usr/lib/arm-linux-gnueabihf searches in pc/CMakeLists.txt
 # into the sysroot. SDL2_DIR is read directly, so packages can search both.
