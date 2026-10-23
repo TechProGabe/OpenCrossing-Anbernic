@@ -35,7 +35,7 @@ static u32 ai_dsp_sample_rate = PC_AUDIO_SAMPLE_RATE;
 static SDL_Thread* audio_producer_thread = NULL;
 static SDL_atomic_t audio_thread_running;
 
-static void pc_audio_drain_nes_over_silence(void);
+static int pc_audio_drain_nes_over_silence(void);
 
 static int pc_audio_producer_func(void* data) {
     (void)data;
@@ -44,9 +44,10 @@ static int pc_audio_producer_func(void* data) {
         if (fill < AUDIO_PRODUCE_THRESHOLD) {
             int before = SDL_AtomicGet(&ring_write_pos);
             pc_audio_process_frame();
-            if (SDL_AtomicGet(&ring_write_pos) == before) {
-                /* jaudio produced nothing this round; don't strand NES audio */
-                pc_audio_drain_nes_over_silence();
+            if (SDL_AtomicGet(&ring_write_pos) == before &&
+                !pc_audio_drain_nes_over_silence()) {
+                /* nothing to play from either source: don't spin a core */
+                SDL_Delay(1);
             }
         } else {
             SDL_Delay(1);
@@ -218,18 +219,22 @@ void AIInitDMA(u32 addr, u32 size) {
     SDL_AtomicSet(&ring_write_pos, (int)(wp + n_samples));
 }
 
-/* Producer thread only: push waiting NES samples mixed over silence. */
-static void pc_audio_drain_nes_over_silence(void) {
+/* Producer thread only, when jaudio produced nothing: push waiting NES
+ * samples mixed over silence. Nothing while the queue is still priming:
+ * silence pushed then would sit between NES chunks as gaps and add lag.
+ * Returns 1 if it pushed anything. */
+static int pc_audio_drain_nes_over_silence(void) {
     static s16 silence[1066]; /* one 60 Hz frame of 32 kHz stereo */
     u32 avail = (u32)SDL_AtomicGet(&nes_write_pos) - (u32)SDL_AtomicGet(&nes_read_pos);
 
-    if (avail == 0) {
-        return;
+    if (avail == 0 || (!nes_primed && avail < NES_PRIME_SAMPLES)) {
+        return 0;
     }
     if (avail > sizeof(silence) / sizeof(silence[0])) {
         avail = sizeof(silence) / sizeof(silence[0]);
     }
     AIInitDMA((u32)(uintptr_t)silence, avail * sizeof(s16));
+    return 1;
 }
 
 void AIStartDMA(void) {

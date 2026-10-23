@@ -18,7 +18,16 @@ void GXSetTevAlphaIn(u32 stage, u32 a, u32 b, u32 c, u32 d);
 void GXSetTevColorOp(u32 stage, u32 op, u32 bias, u32 scale, GXBool clamp, u32 out_reg);
 void GXSetTevAlphaOp(u32 stage, u32 op, u32 bias, u32 scale, GXBool clamp, u32 out_reg);
 
-typedef struct { u8 r, g, b, a; } GXColor;
+/* Same tag as dolphin/gx/GXStruct.h, so LTO sees one type across TUs */
+typedef struct _GXColor { u8 r, g, b, a; } GXColor;
+
+/* GXColor by value, as the game's headers declare it, repacked into the
+ * u32 the setters below work on (same bytes the register carried). */
+static u32 pc_gxcolor_u32(GXColor c) {
+    u32 v;
+    memcpy(&v, &c, sizeof(v));
+    return v;
+}
 
 /* --- Global GX State --- */
 PCGXState g_gx;
@@ -1808,7 +1817,8 @@ void GXSetTevOrder(u32 stage, u32 coord, u32 map, u32 color) {
     ts->color_chan = color;
 }
 
-void GXSetTevColor(u32 id, u32 color_packed) {
+void GXSetTevColor(u32 id, GXColor color) {
+    u32 color_packed = pc_gxcolor_u32(color);
     if (id >= GX_MAX_TEVREG) return;
     /* TEVREG0 uses GXColor fields (byte unpack), others come from EmuColor.raw (shift unpack) */
     float tmp[4];
@@ -1834,7 +1844,8 @@ void GXSetTevColorS10(u32 id, s16 r, s16 g, s16 b, s16 a) {
     memcpy(g_gx.tev_colors[id], tmp, sizeof(tmp));
 }
 
-void GXSetTevKColor(u32 id, u32 color_packed) {
+void GXSetTevKColor(u32 id, GXColor color) {
+    u32 color_packed = pc_gxcolor_u32(color);
     if (id >= 4) return;
     float tmp[4];
     pc_unpack_rgba8f(color_packed, tmp);
@@ -2051,7 +2062,8 @@ void GXSetChanCtrl(u32 chan, GXBool enable, u32 amb_src, u32 mat_src,
     }
 }
 
-void GXSetChanAmbColor(u32 chan, u32 color_packed) {
+void GXSetChanAmbColor(u32 chan, GXColor color) {
+    u32 color_packed = pc_gxcolor_u32(color);
     int idx = pc_gx_chan_index(chan);
     if (idx < 0 || idx >= 2) return;
     float tmp[4];
@@ -2063,7 +2075,8 @@ void GXSetChanAmbColor(u32 chan, u32 color_packed) {
     memcpy(g_gx.chan_amb_color[idx], tmp, sizeof(tmp));
 }
 
-void GXSetChanMatColor(u32 chan, u32 color_packed) {
+void GXSetChanMatColor(u32 chan, GXColor color) {
+    u32 color_packed = pc_gxcolor_u32(color);
     int idx = pc_gx_chan_index(chan);
     if (idx < 0 || idx >= 2) return;
     float tmp[4];
@@ -2179,9 +2192,9 @@ void GXInitLightDir(void* lt, f32 nx, f32 ny, f32 nz) {
     PCGXLightObjInternal* l = (PCGXLightObjInternal*)lt;
     l->nx = nx; l->ny = ny; l->nz = nz;
 }
-void GXInitLightColor(void* lt, u32 color) {
+void GXInitLightColor(void* lt, GXColor color) {
     PCGXLightObjInternal* l = (PCGXLightObjInternal*)lt;
-    l->color = color;
+    l->color = pc_gxcolor_u32(color);
 }
 void GXInitLightAttn(void* lt, f32 a0, f32 a1, f32 a2, f32 k0, f32 k1, f32 k2) {
     PCGXLightObjInternal* l = (PCGXLightObjInternal*)lt;
