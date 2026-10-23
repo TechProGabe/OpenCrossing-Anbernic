@@ -92,7 +92,7 @@ docker run --rm --platform linux/arm/v7 \
   debian:bookworm bash /work/pc/build-armhf-docker.sh
 ```
 
-The binary ends up at `pc/build-armhf/bin/AnimalCrossing`. Desktop builds and more detail are in [BUILDING.md](BUILDING.md).
+The binary ends up at `pc/build-armhf/bin/AnimalCrossing`. On Windows you can skip Docker: `pip install cmake ninja`, then `python pc/tools/build_windows.py`. Desktop builds and more detail are in [BUILDING.md](BUILDING.md).
 
 ## Credits
 
