@@ -35,12 +35,19 @@ static u32 ai_dsp_sample_rate = PC_AUDIO_SAMPLE_RATE;
 static SDL_Thread* audio_producer_thread = NULL;
 static SDL_atomic_t audio_thread_running;
 
+static void pc_audio_drain_nes_over_silence(void);
+
 static int pc_audio_producer_func(void* data) {
     (void)data;
     while (SDL_AtomicGet(&audio_thread_running)) {
         int fill = pc_audio_get_buffer_fill();
         if (fill < AUDIO_PRODUCE_THRESHOLD) {
+            int before = SDL_AtomicGet(&ring_write_pos);
             pc_audio_process_frame();
+            if (SDL_AtomicGet(&ring_write_pos) == before) {
+                /* jaudio produced nothing this round; don't strand NES audio */
+                pc_audio_drain_nes_over_silence();
+            }
         } else {
             SDL_Delay(1);
         }
@@ -127,6 +134,34 @@ void AIInit(u8* stack) {
     }
 }
 
+/* NES audio (fixNES) runs on the game thread, but only the audio producer
+ * thread may write ring_buffer. So NES samples go into their own SPSC ring
+ * (producer=game thread, consumer=audio thread) and get mixed into
+ * whatever jaudio produces next, at the audio device's pace. */
+#define NES_RING_SAMPLES (8192) /* ~128ms at 32kHz stereo */
+#define NES_RING_MASK    (NES_RING_SAMPLES - 1)
+static s16 nes_ring[NES_RING_SAMPLES];
+static SDL_atomic_t nes_write_pos;
+static SDL_atomic_t nes_read_pos;
+
+void pc_audio_nes_push(const s16* src, u32 n_samples) {
+    u32 wp = (u32)SDL_AtomicGet(&nes_write_pos);
+    u32 rp = (u32)SDL_AtomicGet(&nes_read_pos);
+    SDL_MemoryBarrierAcquire();
+    u32 free = NES_RING_SAMPLES - (wp - rp);
+
+    n_samples &= ~1u;
+    if (n_samples > free) {
+        n_samples = free & ~1u; /* audio thread is behind: drop the rest */
+    }
+    for (u32 i = 0; i < n_samples; i++) {
+        nes_ring[(wp + i) & NES_RING_MASK] = src[i];
+    }
+
+    SDL_MemoryBarrierRelease();
+    SDL_AtomicSet(&nes_write_pos, (int)(wp + n_samples));
+}
+
 void AIInitDMA(u32 addr, u32 size) {
     s16* src = (s16*)(uintptr_t)addr;
     u32 n_samples = size / sizeof(s16);
@@ -142,12 +177,41 @@ void AIInitDMA(u32 addr, u32 size) {
         n_samples = free & ~1u;
     }
 
+    u32 nwp = (u32)SDL_AtomicGet(&nes_write_pos);
+    u32 nrp = (u32)SDL_AtomicGet(&nes_read_pos);
+    SDL_MemoryBarrierAcquire();
+    u32 nes_avail = nwp - nrp;
+    if (nes_avail > n_samples) {
+        nes_avail = n_samples;
+    }
+
     for (u32 i = 0; i < n_samples; i++) {
-        ring_buffer[(wp + i) & RING_BUF_MASK] = src[i];
+        int s = src[i];
+        if (i < nes_avail) {
+            s += nes_ring[(nrp + i) & NES_RING_MASK];
+            if (s >  32767) s =  32767;
+            if (s < -32768) s = -32768;
+        }
+        ring_buffer[(wp + i) & RING_BUF_MASK] = (s16)s;
     }
 
     SDL_MemoryBarrierRelease();
+    SDL_AtomicSet(&nes_read_pos, (int)(nrp + nes_avail));
     SDL_AtomicSet(&ring_write_pos, (int)(wp + n_samples));
+}
+
+/* Producer thread only: push waiting NES samples mixed over silence. */
+static void pc_audio_drain_nes_over_silence(void) {
+    static s16 silence[1066]; /* one 60 Hz frame of 32 kHz stereo */
+    u32 avail = (u32)SDL_AtomicGet(&nes_write_pos) - (u32)SDL_AtomicGet(&nes_read_pos);
+
+    if (avail == 0) {
+        return;
+    }
+    if (avail > sizeof(silence) / sizeof(silence[0])) {
+        avail = sizeof(silence) / sizeof(silence[0]);
+    }
+    AIInitDMA((u32)(uintptr_t)silence, avail * sizeof(s16));
 }
 
 void AIStartDMA(void) {

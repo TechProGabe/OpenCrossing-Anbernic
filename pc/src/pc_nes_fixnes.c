@@ -5,7 +5,7 @@
  * init/frame/render/cleanup API for the game's famicom.cpp integration.
  *
  * Produces a 256x240 RGB565 framebuffer uploaded as a GL texture.
- * Audio samples are pushed to the game's audio system via AIInitDMA. */
+ * Audio samples are mixed into the game audio by pc_audio.c. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,8 +88,9 @@ extern bool ppuMapper5;
 /* Input state — written by set_input, read by fixNES input.c */
 extern uint8_t inValReads[8];
 
-/* Audio output to game engine */
-extern void AIInitDMA(uint32_t addr, uint32_t size);
+/* Audio output: pc_audio.c mixes these into the game's stream on its
+ * producer thread (only that thread may write the output ring). */
+extern void pc_audio_nes_push(const int16_t* src, uint32_t n_samples);
 
 /* ======================================================================
  * GL rendering state
@@ -222,7 +223,7 @@ static void fixnes_capture_audio(void) {
     }
 
     if (fixnes_audio_pos > 0) {
-        AIInitDMA((uint32_t)(uintptr_t)fixnes_audio_buf, fixnes_audio_pos * 4);
+        pc_audio_nes_push(fixnes_audio_buf, (uint32_t)fixnes_audio_pos * 2);
     }
 }
 
