@@ -297,11 +297,12 @@ static int idx_back(void)       { return cur_item_count() + 1; }
  * same ones the old overlay menu ran on change). */
 static void apply_pending(void) {
     static const int fps_hz[7] = { 60, 50, 40, 30, 20, 0, 60 };
-    int fps_changed, swap_changed;
+    int fps_changed, swap_changed, window_changed;
 
     if (!s_dirty) return;
     fps_changed = s_pending.fps_target != g_pc_settings.fps_target;
     swap_changed = s_pending.swap_ab_xy != g_pc_settings.swap_ab_xy;
+    window_changed = s_pending.render_scale != g_pc_settings.render_scale;
 
     g_pc_settings = s_pending;
 
@@ -320,7 +321,10 @@ static void apply_pending(void) {
     }
     g_pc_scale_mode = g_pc_settings.scale_mode;
 
-    pc_settings_apply(); /* render scale, endless acres */
+    /* pc_settings_apply also re-sets fullscreen and the window size, which
+     * can flicker on some firmwares: only for a new render scale. */
+    if (window_changed) pc_settings_apply();
+    pc_settings_apply_borderless_acres();
     pc_settings_save();
     s_dirty = 0;
     printf("[SETTINGS] applied\n");
@@ -866,7 +870,7 @@ static void draw_settings_page(void) {
     /* help line: the selected row; status line: the buttons */
     if (s_sel == -1) help = "Left and Right turn the pages";
     else if (sel_btn == 0) help = s_dirty ? "Keep the changes marked in orange" : "Nothing changed yet";
-    else if (sel_btn == 1) help = s_dirty ? "Leave: you can still keep the changes" : "Back to the game";
+    else if (sel_btn == 1) help = s_dirty ? "Leave: you can still keep the changes" : "Close Options";
 
     status = s_sel == -1 ? "A: open the page     B: back" :
              sel_btn >= 0 ? "A: choose     B: back" : "Left, Right: change     B: back";
