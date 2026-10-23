@@ -424,6 +424,24 @@ void pc_overlay_boot_progress(float frac, const char* label) {
     H = (float)g_pc_window_h;
     u = H / 480.0f; /* layout unit: 1 at 480 lines */
 
+    /* Most steps run after pc_gx_init, whose VAO stays bound for good and
+     * whose texture-bind cache assumes nobody else rebinds: save and
+     * restore what we touch, as pc_overlay_draw does. */
+    GLint sv_prog, sv_vao, sv_vbo, sv_tex, sv_active_tex, sv_fbo, sv_vp[4], sv_bsrc, sv_bdst;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &sv_prog);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &sv_vao);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &sv_vbo);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &sv_active_tex);
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &sv_fbo);
+    glGetIntegerv(GL_VIEWPORT, sv_vp);
+    glGetIntegerv(GL_BLEND_SRC_RGB, &sv_bsrc);
+    glGetIntegerv(GL_BLEND_DST_RGB, &sv_bdst);
+    GLboolean sv_blend   = glIsEnabled(GL_BLEND);
+    GLboolean sv_depth   = glIsEnabled(GL_DEPTH_TEST);
+    GLboolean sv_scissor = glIsEnabled(GL_SCISSOR_TEST);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &sv_tex);
+
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, g_pc_window_w, g_pc_window_h);
     glUseProgram(ov_prog);
@@ -475,6 +493,18 @@ void pc_overlay_boot_progress(float frac, const char* label) {
 
     glUniform1i(ov_loc_rgba, 0);
     SDL_GL_SwapWindow(g_pc_window);
+
+    glUseProgram(sv_prog);
+    glBindVertexArray(sv_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, sv_vbo);
+    glBindTexture(GL_TEXTURE_2D, sv_tex);
+    glActiveTexture(sv_active_tex);
+    glBindFramebuffer(GL_FRAMEBUFFER, sv_fbo);
+    glViewport(sv_vp[0], sv_vp[1], sv_vp[2], sv_vp[3]);
+    glBlendFunc(sv_bsrc, sv_bdst);
+    if (!sv_blend)  glDisable(GL_BLEND);
+    if (sv_depth)   glEnable(GL_DEPTH_TEST);
+    if (sv_scissor) glEnable(GL_SCISSOR_TEST);
 }
 
 void pc_overlay_boot_splash(const char* msg) {
