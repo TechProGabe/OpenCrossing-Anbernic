@@ -569,7 +569,10 @@ set_source_files_properties(
 # runs through these every frame, on aligned Mtx/MtxF/float data, which is
 # why they're the safe next step after emu64 (the -O1 SIGBUS came from
 # unaligned decomp data being merged into LDRD/LDM loads). Same guards as
-# emu64. DEVICE-TEST GATE as above; -DPC_OPT_MATH=OFF is the kill switch.
+# emu64, plus -ffp-contract=off: at -O2 GCC fuses multiply-adds (one
+# rounding instead of two), and game logic has been tuned on the unfused
+# results (cf. the x87 spin bug). DEVICE-TEST GATE as above;
+# -DPC_OPT_MATH=OFF is the kill switch.
 if(PC_OPT_MATH)
     set_source_files_properties(
         "${DECOMP_ROOT}/src/system/sys_matrix.c"
@@ -578,7 +581,7 @@ if(PC_OPT_MATH)
         "${DECOMP_ROOT}/src/system/sys_math_atan.c"
         "${DECOMP_ROOT}/src/c_keyframe.c"
         "${DECOMP_ROOT}/src/game/m_skin_matrix.c"
-        PROPERTIES COMPILE_OPTIONS "${DECOMP_C_WARN_FLAGS};-O2;-fno-strict-aliasing;-fwrapv;-fno-delete-null-pointer-checks;-fno-lifetime-dse;-fno-aggressive-loop-optimizations;-fno-strict-overflow"
+        PROPERTIES COMPILE_OPTIONS "${DECOMP_C_WARN_FLAGS};-O2;-fno-strict-aliasing;-fwrapv;-fno-delete-null-pointer-checks;-fno-lifetime-dse;-fno-aggressive-loop-optimizations;-fno-strict-overflow;-ffp-contract=off"
     )
 endif()
 
