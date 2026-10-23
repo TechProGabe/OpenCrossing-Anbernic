@@ -70,6 +70,10 @@ static void Player_actor_BGcheck_Turn_dash(ACTOR* actor) {
 
 static void Player_actor_request_proc_index_fromTurn_dash_common(ACTOR* actor, GAME* game, int is_stopped,
                                                                  int rotdiff) {
+    if (g_mPlib_wade_disabled) {
+        Player_actor_Set_ScrollDemo_forWade(actor, game, mEv_IsNotTitleDemo());
+    }
+
     if (is_stopped != 0 && rotdiff != 0) {
         Player_actor_SettleRequestMainIndexPriority(actor);
         Player_actor_request_main_wait_all(game, -12.0f, 0.0f, 0, mPlayer_REQUEST_PRIORITY_1);

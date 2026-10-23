@@ -89,10 +89,12 @@ static void aTUR_actor_move(ACTOR* actorx, GAME* game) {
     mFI_Wpos2BlockNum(&turi_bx, &turi_bz, actorx->world.position);
     mFI_Wpos2BlockNum(&player_bx, &player_bz, player_actor->world.position);
 
-    if (!mDemo_Check(mDemo_TYPE_SCROLL, player_actor) && !mDemo_Check(mDemo_TYPE_SCROLL2, player_actor) && !mDemo_Check(mDemo_TYPE_SCROLL3, player_actor) && (turi_bx != player_bx || turi_bz != player_bz)) {
+    if (!mDemo_Check(mDemo_TYPE_SCROLL, player_actor) && !mDemo_Check(mDemo_TYPE_SCROLL2, player_actor) &&
+        !mDemo_Check(mDemo_TYPE_SCROLL3, player_actor) &&
+        (ABS(turi_bx - player_bx) > 1 || ABS(turi_bz - player_bz) > 1)) {
         Actor_delete(actorx);
     } else {
-        (*turi->structure_class.action_proc)((STRUCTURE_ACTOR*)turi, play);
+        turi->structure_class.action_proc((STRUCTURE_ACTOR*)turi, play);
     }
 }
 

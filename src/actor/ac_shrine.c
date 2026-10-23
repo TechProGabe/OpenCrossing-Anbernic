@@ -3,6 +3,7 @@
 #include "m_msg.h"
 #include "m_play.h"
 #include "sys_matrix.h"
+#include "m_player_lib.h"
 
 static void aSHR_actor_ct(ACTOR* actorx, GAME* game);
 static void aSHR_actor_dt(ACTOR* actorx, GAME* game);

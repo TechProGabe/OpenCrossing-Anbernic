@@ -28,6 +28,14 @@ static mEv_place_data_c* wpppp;
 static mEv_place_data_c* spppp;
 static mEv_place_data_c* dpppp;
 static mEv_place_data_c* tpppp;
+static const BlockOrUnit_c l_near_block_lookup_table[][3] = {
+    { { 0, -1 }, { -1, -1 }, { -1, 0 } },
+    { { 0, 1 }, { -1, 1 }, { -1, 0 } },
+    { { 0, -1 }, { 1, -1 }, { 1, 0 } },
+    { { 0, 1 }, { 1, 1 }, { 1, 0 } },
+};
+static BlockOrUnit_c l_last_nearby_center_block = { -1, -1 };
+static int l_last_nearby_quadrant = -1;
 
 static int get_forward_block(int* bx, int* bz) {
     if (Common_Get(player_actor_exists) == FALSE) {
@@ -47,6 +55,52 @@ static int get_forward_block(int* bx, int* bz) {
     }
 
     return TRUE;
+}
+
+static int aEvMgr_get_nearby_area_info(BlockOrUnit_c* center_block, int* quadrant) {
+    ACTOR* playerx = GET_PLAYER_ACTOR_NOW_ACTOR();
+    int unit_x;
+    int unit_z;
+
+    if (playerx == NULL) {
+        return FALSE;
+    }
+
+    if (get_forward_block(&center_block->x, &center_block->z) == FALSE ||
+        mFI_Wpos2UtNum_inBlock(&unit_x, &unit_z, playerx->world.position) == FALSE) {
+        return FALSE;
+    }
+
+    *quadrant = unit_x >= 8;
+    *quadrant |= (unit_z >= 8) << 1;
+    return TRUE;
+}
+
+static int aEvMgr_check_in_nearby_area(const BlockOrUnit_c* near_block, const BlockOrUnit_c* center_block,
+                                       int quadrant) {
+    const BlockOrUnit_c* ofs_p;
+    int i;
+
+    if (near_block->x == center_block->x && near_block->z == center_block->z) {
+        return TRUE;
+    }
+
+    /* Neighbor blocks only count when borderless acres is enabled. */
+    if (!g_mPlib_wade_disabled) {
+        return FALSE;
+    }
+
+    ofs_p = l_near_block_lookup_table[quadrant];
+    for (i = 0; i < 3; i++) {
+        int bx = center_block->x + ofs_p[i].x;
+        int bz = center_block->z + ofs_p[i].z;
+
+        if (mFI_BlockCheck(bx, bz) != FALSE && near_block->x == bx && near_block->z == bz) {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
 }
 
 static void aEvMgr_actor_renewal_player_pos(GAME* game, EVENT_MANAGER_ACTOR* evmgr) {
@@ -1549,6 +1603,7 @@ static mEv_place_data_c* make_FG_in_reserved_block(EVENT_MANAGER_ACTOR* evmgr, a
 static mEv_place_data_c* show_actor_at_wade(EVENT_MANAGER_ACTOR* evmgr, aEvMgr_event_ctrl_c* ctrl, u8 id) {
     mEv_place_data_c sel_place_data;
     mEv_place_data_c* place_data;
+    int quadrant;
 
     if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELDTYPE2_FG) {
         place_data = mEv_get_common_place(ctrl->type, (u8)id);
@@ -1557,11 +1612,11 @@ static mEv_place_data_c* show_actor_at_wade(EVENT_MANAGER_ACTOR* evmgr, aEvMgr_e
                 return aEvMgr_SHOW_ACTOR_RESULT_NOT_SHOWN;
             }
 
-            if (get_forward_block(&ctrl->block.x, &ctrl->block.z) == FALSE) {
+            if (aEvMgr_get_nearby_area_info(&ctrl->block, &quadrant) == FALSE) {
                 return aEvMgr_SHOW_ACTOR_RESULT_NOT_SHOWN;
             }
 
-            if (ctrl->block.x != place_data->block.x || ctrl->block.z != place_data->block.z) {
+            if (aEvMgr_check_in_nearby_area(&place_data->block, &ctrl->block, quadrant) == FALSE) {
                 return aEvMgr_SHOW_ACTOR_RESULT_NOT_SHOWN;
             }
 
@@ -1606,6 +1661,7 @@ static mEv_place_data_c* show_actor_at_wade(EVENT_MANAGER_ACTOR* evmgr, aEvMgr_e
 
 static mEv_place_data_c* show_actor_at_wade_checkless(EVENT_MANAGER_ACTOR* evmgr, aEvMgr_event_ctrl_c* ctrl, u8 id) {
     mEv_place_data_c* place_data;
+    int quadrant;
 
     if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELDTYPE2_FG) {
         place_data = mEv_get_common_place(ctrl->type, (u8)id);
@@ -1614,11 +1670,11 @@ static mEv_place_data_c* show_actor_at_wade_checkless(EVENT_MANAGER_ACTOR* evmgr
                 return aEvMgr_SHOW_ACTOR_RESULT_NOT_SHOWN;
             }
 
-            if (get_forward_block(&ctrl->block.x, &ctrl->block.z) == FALSE) {
+            if (aEvMgr_get_nearby_area_info(&ctrl->block, &quadrant) == FALSE) {
                 return aEvMgr_SHOW_ACTOR_RESULT_NOT_SHOWN;
             }
 
-            if (ctrl->block.x != place_data->block.x || ctrl->block.z != place_data->block.z) {
+            if (aEvMgr_check_in_nearby_area(&place_data->block, &ctrl->block, quadrant) == FALSE) {
                 return aEvMgr_SHOW_ACTOR_RESULT_NOT_SHOWN;
             }
 
@@ -1640,6 +1696,7 @@ static mEv_place_data_c* show_actor_at_wade_checkfgcol(EVENT_MANAGER_ACTOR* evmg
     volatile BlockOrUnit_c unit;
     volatile mEv_place_data_c* place_data; // issue here, there's no way this is actually volatile. Removing volatile causes some loads to be optimized away.
     GAME_PLAY* play;
+    int quadrant;
 
     if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELDTYPE2_FG) {
         place_data = mEv_get_common_place(ctrl->type, (u8)id);
@@ -1648,11 +1705,12 @@ static mEv_place_data_c* show_actor_at_wade_checkfgcol(EVENT_MANAGER_ACTOR* evmg
                 return aEvMgr_SHOW_ACTOR_RESULT_NOT_SHOWN;
             }
 
-            if (get_forward_block(&ctrl->block.x, &ctrl->block.z) == FALSE) {
+            if (aEvMgr_get_nearby_area_info(&ctrl->block, &quadrant) == FALSE) {
                 return aEvMgr_SHOW_ACTOR_RESULT_NOT_SHOWN;
             }
 
-            if (ctrl->block.x != place_data->block.x || ctrl->block.z != place_data->block.z) {
+            if (aEvMgr_check_in_nearby_area((const BlockOrUnit_c*)&place_data->block, &ctrl->block, quadrant) ==
+                FALSE) {
                 return aEvMgr_SHOW_ACTOR_RESULT_NOT_SHOWN;
             }
 
@@ -4320,7 +4378,7 @@ static int event_at_oclock(EVENT_MANAGER_ACTOR* evmgr, aEvMgr_event_ctrl_c* ctrl
     return ret;
 }
 
-static int event_at_wade(EVENT_MANAGER_ACTOR* evmgr, aEvMgr_event_ctrl_c* ctrl) {
+static int event_at_wade(EVENT_MANAGER_ACTOR* evmgr, aEvMgr_event_ctrl_c* ctrl, int allow_stationary_update) {
     int ret = 0;
 
     if (evmgr->skip_event_at_wade) {
@@ -4340,7 +4398,8 @@ static int event_at_wade(EVENT_MANAGER_ACTOR* evmgr, aEvMgr_event_ctrl_c* ctrl) 
             }
         }
     } else {
-        if (mFI_CheckPlayerWade(mFI_WADE_NONE) == TRUE && ((GAME_PLAY*)gamePT)->fb_fade_type == FADE_TYPE_NONE) {
+        if (allow_stationary_update == FALSE && mFI_CheckPlayerWade(mFI_WADE_NONE) == TRUE &&
+            ((GAME_PLAY*)gamePT)->fb_fade_type == FADE_TYPE_NONE) {
             return FALSE;
         }
 
@@ -4593,6 +4652,9 @@ static void schedule_init(ACTOR* actorx) {
     evmgr->next_block.x = -1;
     evmgr->next_block.z = -1;
     evmgr->skip_event_at_wade = 0;
+    l_last_nearby_center_block.x = -1;
+    l_last_nearby_center_block.z = -1;
+    l_last_nearby_quadrant = -1;
     fluc = now->min * 16 + now->sec * seed[now->sec & 7];
     evmgr->pool_block_exists = TRUE;
     evmgr->station_block_exists = TRUE;
@@ -4636,8 +4698,12 @@ static void schedule_main(ACTOR* actorx) {
     int change;
     int event_waiting;
     BlockOrUnit_c block;
+    BlockOrUnit_c nearby_center_block;
     aEvMgr_event_ctrl_c* ctrl;
     u32 player_no = Common_Get(player_no);
+    int nearby_quadrant;
+    int nearby_changed = FALSE;
+    int nearby_info_valid = FALSE;
 
     if (Save_Get(event_save_common).special_event.flags == 1) {
         set_special_event_save();
@@ -4686,9 +4752,19 @@ static void schedule_main(ACTOR* actorx) {
         return;
     }
     if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELDTYPE2_FG) {
+        if (g_mPlib_wade_disabled && aEvMgr_get_nearby_area_info(&nearby_center_block, &nearby_quadrant) != FALSE) {
+            nearby_info_valid = TRUE;
+            if (nearby_center_block.x != l_last_nearby_center_block.x ||
+                nearby_center_block.z != l_last_nearby_center_block.z ||
+                nearby_quadrant != l_last_nearby_quadrant) {
+                nearby_changed = TRUE;
+            }
+        }
+
         mFI_Wpos2BlockNum(&block.x, &block.z, playerx->world.position);
         if (
             // clang-format off
+            nearby_changed == TRUE ||
             block.x != evmgr->next_block.x || block.z != evmgr->next_block.z ||
             mFI_CheckPlayerWade(mFI_WADE_START) == TRUE ||
             mFI_CheckPlayerWade(mFI_WADE_INPROGRESS) == TRUE ||
@@ -4701,12 +4777,16 @@ static void schedule_main(ACTOR* actorx) {
 
             for (i = 0; i < n_today_event; i++) {
                 ctrl = today_event[i];
-                if (event_at_wade(evmgr, ctrl) == FALSE) {
+                if (event_at_wade(evmgr, ctrl, nearby_changed) == FALSE) {
                     event_waiting++;
                 }
             }
 
             if (event_waiting == 0) {
+                if (nearby_info_valid) {
+                    l_last_nearby_center_block = nearby_center_block;
+                    l_last_nearby_quadrant = nearby_quadrant;
+                }
                 mFI_GetNextBlockNum(&block.x, &block.z);
                 evmgr->next_block.x = block.x;
                 evmgr->next_block.z = block.z;
@@ -4715,6 +4795,9 @@ static void schedule_main(ACTOR* actorx) {
             fluc = fluc * 2 + ((fluc & 0xD5FE46CF) + (now->sec | 1)) * 9;
         }
     } else {
+        l_last_nearby_center_block.x = -1;
+        l_last_nearby_center_block.z = -1;
+        l_last_nearby_quadrant = -1;
         evmgr->next_block.x = -1;
         evmgr->next_block.z = -1;
     }

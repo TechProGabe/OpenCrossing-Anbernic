@@ -1549,22 +1549,23 @@ static int Player_actor_CheckAbleMoveWadeBG(GAME* game, const xyz_t* pos_p, int 
     xyz_t world_border_pos;
     int bx;
     int bz;
+    f32 border_ofs = (!g_mPlib_wade_disabled || mEv_CheckTitleDemo() > 0) ? 18.00001f : 0.20001f;
 
     mFI_Wpos2BlockNum(&bx, &bz, *pos_p);
     mFI_LposInBKtoWpos(&world_border_pos, local_border_pos, bx, bz);
     target_pos = *pos_p;
     switch (dir) {
         case mFI_MOVEDIR_RIGHT:
-            target_pos.x = world_border_pos.x + 18.00001f + mFI_BK_WORLDSIZE_X_F;
+            target_pos.x = world_border_pos.x + border_ofs + mFI_BK_WORLDSIZE_X_F;
             break;
         case mFI_MOVEDIR_LEFT:
-            target_pos.x = world_border_pos.x - 18.00001f;
+            target_pos.x = world_border_pos.x - border_ofs;
             break;
         case mFI_MOVEDIR_UP:
-            target_pos.z = world_border_pos.z - 18.00001f;
+            target_pos.z = world_border_pos.z - border_ofs;
             break;
         case mFI_MOVEDIR_DOWN:
-            target_pos.z = world_border_pos.z + 18.00001f + mFI_BK_WORLDSIZE_Z_F;
+            target_pos.z = world_border_pos.z + border_ofs + mFI_BK_WORLDSIZE_Z_F;
             break;
         default:
             return FALSE;
@@ -1582,12 +1583,13 @@ static int Player_actor_CheckAbleMoveWadeBlock(GAME* game, const xyz_t* pos_p, s
     f32 move_percentX = Player_actor_GetController_move_percentX();
     f32 move_percentY = Player_actor_GetController_move_percentY();
     xyz_t local_pos;
+    f32 border_ofs = (!g_mPlib_wade_disabled || mEv_CheckTitleDemo() > 0) ? 18.00001f : 0.20001f;
 
     mFI_WpostoLposInBK(&local_pos, *pos_p);
     if (move_percentX > stick_range &&
         ((DEG2SHORT_ANGLE2(90.0f) - angle_range) < angle_y && angle_y < (DEG2SHORT_ANGLE2(90.0f) + angle_range)) &&
         mFI_ScrollCheck(*pos_p, mFI_MOVEDIR_RIGHT)) {
-        f32 border_x = (mFI_BK_WORLDSIZE_X_F - 18.00001f);
+        f32 border_x = (mFI_BK_WORLDSIZE_X_F - border_ofs);
 
         if (mCoBG_GetBlockBgCheckMode() == mCoBG_BLOCK_BGCHECK_MODE_INTRO_DEMO) {
             border_x -= mFI_UNIT_BASE_SIZE_F;
@@ -1607,7 +1609,7 @@ static int Player_actor_CheckAbleMoveWadeBlock(GAME* game, const xyz_t* pos_p, s
                (DEG2SHORT_ANGLE2(-90.0f) - angle_range < (int)angle_y &&
                 (int)angle_y < DEG2SHORT_ANGLE2(-90.0f) + angle_range) &&
                mFI_ScrollCheck(*pos_p, mFI_MOVEDIR_LEFT)) {
-        f32 border_x = 18.00001f;
+        f32 border_x = border_ofs;
 
         if (mCoBG_GetBlockBgCheckMode() == mCoBG_BLOCK_BGCHECK_MODE_INTRO_DEMO) {
             border_x += mFI_UNIT_BASE_SIZE_F;
@@ -1628,7 +1630,7 @@ static int Player_actor_CheckAbleMoveWadeBlock(GAME* game, const xyz_t* pos_p, s
              ((DEG2SHORT_ANGLE2(180.0f) - angle_range) < (int)angle_y ||
               (int)angle_y < (DEG2SHORT_ANGLE2(-180.0f) + angle_range)) &&
              mFI_ScrollCheck(*pos_p, mFI_MOVEDIR_UP)) {
-        f32 border_z = 18.00001f;
+        f32 border_z = border_ofs;
 
         if (mCoBG_GetBlockBgCheckMode() == mCoBG_BLOCK_BGCHECK_MODE_INTRO_DEMO) {
             border_z += mFI_UNIT_BASE_SIZE_F;
@@ -1649,7 +1651,7 @@ static int Player_actor_CheckAbleMoveWadeBlock(GAME* game, const xyz_t* pos_p, s
              ((-angle_range < (int)angle_y && (int)angle_y <= DEG2SHORT_ANGLE2(0.0f)) ||
               (int)angle_y >= DEG2SHORT_ANGLE2(0.0f) && (int)angle_y < angle_range) &&
              mFI_ScrollCheck(*pos_p, mFI_MOVEDIR_DOWN)) {
-        f32 border_z = (mFI_BK_WORLDSIZE_Z_F - 18.00001f);
+        f32 border_z = (mFI_BK_WORLDSIZE_Z_F - border_ofs);
 
         if (mCoBG_GetBlockBgCheckMode() == mCoBG_BLOCK_BGCHECK_MODE_INTRO_DEMO) {
             border_z -= mFI_UNIT_BASE_SIZE_F;
@@ -3615,9 +3617,12 @@ static int Player_actor_Get_WadeEndPos(GAME* game, xyz_t* end_pos_p) {
             } else if (mPlib_get_player_actor_main_index(game) == mPlayer_INDEX_DEMO_GETON_BOAT_WADE) {
                 *end_pos_p = player->main_data.demo_geton_boat_wade.end_pos;
                 return TRUE;
+            } else if (g_mPlib_wade_disabled && mFI_GetPlayerWade() == mFI_WADE_START) {
+                *end_pos_p = l_wade_end_pos;
+                return TRUE;
             }
 
-            *end_pos_p = GET_PLAYER_ACTOR_GAME_ACTOR(game)->world.position;
+            *end_pos_p = player->actor_class.world.position;
         } else {
             *end_pos_p = ZeroVec;
         }
@@ -3659,11 +3664,43 @@ static void Player_actor_Init_ScrollDemo_forWade_snowball(ACTOR* actorx) {
 static int Player_actor_Set_ScrollDemo_forWade(ACTOR* actorx, GAME* game, int npc_check_flag) {
     xyz_t* player_pos_p = &actorx->world.position;
     s16 player_angle_y = actorx->shape_info.rotation.y;
+    GAME_PLAY* play = (GAME_PLAY*)game;
     int dir = Player_actor_CheckAbleMoveWadeBlock(game, player_pos_p, player_angle_y, 0.65f, DEG2SHORT_ANGLE2(40.0f),
                                                   npc_check_flag);
+    PLAYER_ACTOR* player = (PLAYER_ACTOR*)actorx;
 
-    if (dir != mFI_MOVEDIR_NONE) {
-        PLAYER_ACTOR* player = (PLAYER_ACTOR*)actorx;
+    if (g_mPlib_wade_disabled && mEv_CheckTitleDemo() <= 0) {
+        int bx;
+        int bz;
+        int trigger_wade = FALSE;
+
+        mFI_Wpos2BlockNum(&bx, &bz, *player_pos_p);
+        if (play->block_table.block_x != bx || play->block_table.block_z != bz) {
+            if (play->block_table.block_x < bx) {
+                dir = mFI_MOVEDIR_LEFT;
+            } else if (play->block_table.block_x > bx) {
+                dir = mFI_MOVEDIR_RIGHT;
+            } else if (play->block_table.block_z < bz) {
+                dir = mFI_MOVEDIR_UP;
+            } else {
+                dir = mFI_MOVEDIR_DOWN;
+            }
+
+            mFI_SetBearActor(play, *player_pos_p, TRUE);
+            Common_Set(in_initial_block, FALSE);
+            l_wade_end_pos = *player_pos_p;
+            trigger_wade = TRUE;
+        }
+
+        if (trigger_wade) {
+            int back_idx = player->now_main_index;
+
+            player->now_main_index = mPlayer_INDEX_WADE;
+            mFI_SetPlayerWade(game);
+            player->now_main_index = back_idx;
+            l_skip_other_func_set_wade = TRUE;
+        }
+    } else if (dir != mFI_MOVEDIR_NONE) {
 
         if (mPlib_Get_unable_wade() == FALSE) {
             player->request_wade_dir = dir;

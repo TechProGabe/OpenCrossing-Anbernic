@@ -69,6 +69,10 @@ static void Player_actor_SearchAnimation_Push_snowball(ACTOR* actorx, GAME* game
 static void Player_actor_request_proc_index_fromPush_snowball(ACTOR* actorx, GAME* game) {
     PLAYER_ACTOR* player = (PLAYER_ACTOR*)actorx;
 
+    if (g_mPlib_wade_disabled) {
+        Player_actor_Set_ScrollDemo_forWade(actorx, game, mEv_IsNotTitleDemo());
+    }
+
     if (player->crash_snowball_for_wade) {
         /* The snowball 'crashed' while wading, so revert to wait state */
         Player_actor_SettleRequestMainIndexPriority(actorx);

@@ -13,6 +13,7 @@ extern "C" {
 #endif
 
 #define aSNMgr_EVENT_NORMAL_NPC_NUM mNpc_EVENT_NPC_NUM
+#define aSNMgr_SET_NPC_MAX ANIMAL_NUM_MAX
 
 enum {
     aSNMgr_SET_MODE_NONE,
@@ -37,7 +38,7 @@ typedef struct set_npc_event_info_s {
     int type;
     int event_map_idx;
     int joint_npc_max;
-    xyz_t pos[mNpc_EVENT_NPC_NUM];
+    xyz_t pos[aSNMgr_EVENT_NORMAL_NPC_NUM];
 } aSNMgr_event_info_c;
 
 typedef struct set_npc_make_s {
@@ -62,7 +63,7 @@ typedef struct set_npc_npc_info_s {
     u16 exist;
     u16 appear;
     u16 joint_event;
-    aSNMgr_make_c make[mNpc_EVENT_NPC_NUM];
+    aSNMgr_make_c make[aSNMgr_SET_NPC_MAX];
     aSNMgr_event_info_c event_info;
     int timer[ANIMAL_NUM_MAX];
 } aSNMgr_npc_info_c;

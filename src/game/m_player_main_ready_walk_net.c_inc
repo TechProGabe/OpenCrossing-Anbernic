@@ -134,6 +134,10 @@ static void Player_actor_request_proc_index_fromReady_walk_net(ACTOR* actor, GAM
     s8 kind;
     s8 getkind;
 
+    if (g_mPlib_wade_disabled) {
+        Player_actor_Set_ScrollDemo_forWade(actor, game, mEv_CheckTitleDemo() <= 0);
+    }
+
     if (mPlib_check_player_warp_forEvent()) {
         Player_actor_request_main_walk_all(game, NULL, -5.0f, 0, mPlayer_REQUEST_PRIORITY_22);
 

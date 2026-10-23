@@ -4,6 +4,7 @@
 #include "m_common_data.h"
 #include "m_name_table.h"
 #include "m_house.h"
+#include "m_player_lib.h"
 
 static void aDOU_actor_ct(ACTOR*, GAME*);
 static void aDOU_actor_dt(ACTOR*, GAME*);
@@ -126,7 +127,6 @@ static void aDOU_actor_ct(ACTOR* actor, GAME* game) {
     actor->world.position.y = mCoBG_GetBgY_OnlyCenter_FromWpos2(wpos, 0.0f);
     actor->cull_width = 850.0f;
     actor->cull_radius = 850.0f;
-
     aDOU_setup_action((ACTOR*)douzou, 0);
     cKF_SkeletonInfo_R_play(&douzou->keyframe);
     aDOU_keep_item(actor);

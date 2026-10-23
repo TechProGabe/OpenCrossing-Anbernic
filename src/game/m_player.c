@@ -28,6 +28,9 @@
 #include "m_vibctl.h"
 #include "m_debug.h"
 
+static int l_skip_other_func_set_wade = FALSE;
+static xyz_t l_wade_end_pos = { 0.0f, 0.0f, 0.0f };
+
 /* Static function declarations, add as needed for intellisense */
 static void Player_actor_Item_Setup_main(ACTOR* actor, int now, int last);
 static mActor_name_t Player_actor_Get_ItemNoSubmenu(void);

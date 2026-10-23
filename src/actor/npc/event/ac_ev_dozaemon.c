@@ -88,8 +88,6 @@ static void aEDZ_actor_ct(ACTOR* actorx, GAME* game) {
         if (dozaemon_ev == NULL) {
             dozaemon_ev = (mEv_dozaemon_c*)mEv_reserve_save_area(mEv_EVENT_DOZAEMON, 13);
             dozaemon_ev->flags = 0;
-        } else if ((dozaemon_ev->flags & aEDZ_SAVE_FLAG_WAKEUP) != 0) {
-            Actor_delete(actorx);
         }
 
         if (actorx->mv_proc != NULL && Save_Get(event_save_common).dozaemon_completed == TRUE) {

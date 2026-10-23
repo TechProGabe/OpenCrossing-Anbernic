@@ -64,7 +64,7 @@ static void aSNMgr_actor_ct(ACTOR* actorx, GAME* game) {
     aSNMgr_set_npc_exist(manager);
     manager->npc_info.appear = 0;
     manager->npc_info.joint_event = 0;
-    aSNMgr_clear_make_npc(manager->npc_info.make, mNpc_EVENT_NPC_NUM);
+    aSNMgr_clear_make_npc(manager->npc_info.make, aSNMgr_SET_NPC_MAX);
     aSNMgr_clear_event_info(&manager->npc_info.event_info);
 
     for (i = 0; i < ANIMAL_NUM_MAX; i++) {
@@ -224,8 +224,10 @@ static void aSNMgr_renewal_player_next_block(SET_NPC_MANAGER_ACTOR* manager) {
 static void aSNMgr_renewal_set_scope(SET_NPC_MANAGER_ACTOR* manager) {
     static int block_wh[] = { mFI_BK_WORLDSIZE_X, mFI_BK_WORLDSIZE_Z };
     static f32 half_block_wh[] = { mFI_BK_WORLDSIZE_HALF_X_F, mFI_BK_WORLDSIZE_HALF_Z_F };
-    static f32 r_add[] = { -mFI_BK_WORLDSIZE_HALF_X_F, mFI_BK_WORLDSIZE_HALF_Z_F };
+    static f32 r_add_borderless[] = { -mFI_BK_WORLDSIZE_X_F, mFI_BK_WORLDSIZE_Z_F };
+    static f32 r_add_original[] = { -mFI_BK_WORLDSIZE_HALF_X_F, mFI_BK_WORLDSIZE_HALF_Z_F };
     static f32 gr_add[] = { -mFI_UT_WORLDSIZE_X_F, mFI_UT_WORLDSIZE_Z_F };
+    f32* r_add = g_mPlib_wade_disabled ? r_add_borderless : r_add_original;
     int* next_block_p = manager->player_pos.next_block;
     aSNMgr_scope_c* scope_p = &manager->scope;
     aSNMgr_scope_c* guest_scope_p = &manager->guest_scope;
@@ -305,7 +307,9 @@ static int aSNMgr_set_appear_info_regular(SET_NPC_MANAGER_ACTOR* manager, int bx
     int player_bz = manager->player_pos.next_block[1];
     int ret = FALSE;
 
-    if (bx == player_bx && bz == player_bz) {
+    int appear_range = g_mPlib_wade_disabled ? 1 : 0;
+
+    if (ABS(bx - player_bx) <= appear_range && ABS(bz - player_bz) <= appear_range) {
         mNpcW_info_c* info_p = manager->npc_info.winfo_p[idx];
 
         if (info_p != NULL) {
@@ -692,7 +696,7 @@ static int aSNMgr_get_make_npc_idx(mActor_name_t name, int animal_idx, aSNMgr_ma
     int ret = -1;
     int i;
 
-    for (i = 0; i < aSNMgr_EVENT_NORMAL_NPC_NUM; i++) {
+    for (i = 0; i < aSNMgr_SET_NPC_MAX; i++) {
         if (make_p->name == name && make_p->idx == animal_idx) {
             ret = i;
             break;
@@ -732,7 +736,7 @@ static void aSNMgr_make_npc(SET_NPC_MANAGER_ACTOR* manager, GAME_PLAY* play) {
     int i;
 
     if (CLIP(npc_clip) != NULL && CLIP(npc_clip)->setupActor_proc != NULL) {
-        for (i = 0; i < aSNMgr_EVENT_NORMAL_NPC_NUM; i++) {
+        for (i = 0; i < aSNMgr_SET_NPC_MAX; i++) {
             switch (ITEM_NAME_GET_TYPE(make_p->name)) {
                 case NAME_TYPE_SPNPC:
                 case NAME_TYPE_NPC:
@@ -1254,7 +1258,7 @@ static void aSNMgr_actor_move(ACTOR* actorx, GAME* game) {
     aSNMgr_get_player_pos(&manager->player_pos.pos, game);
     switch (mFI_GetPlayerWade()) {
         case mFI_WADE_START:
-            aSNMgr_clear_make_npc(manager->npc_info.make, aSNMgr_EVENT_NORMAL_NPC_NUM);
+            aSNMgr_clear_make_npc(manager->npc_info.make, aSNMgr_SET_NPC_MAX);
             aSNMgr_renewal_player_next_block(manager);
             aSNMgr_renewal_set_scope(manager);
             aSNMgr_setup_set_proc(manager, aSNMgr_SET_MODE_REGULAR);
@@ -1265,7 +1269,7 @@ static void aSNMgr_actor_move(ACTOR* actorx, GAME* game) {
             break;
         case mFI_WADE_NONE:
             if (play->fb_fade_type == FADE_TYPE_NONE) {
-                aSNMgr_clear_make_npc(manager->npc_info.make, aSNMgr_EVENT_NORMAL_NPC_NUM);
+                aSNMgr_clear_make_npc(manager->npc_info.make, aSNMgr_SET_NPC_MAX);
                 if (!aSNMgr_chk_arbeit_and_demo_and_halloween()) {
                     aSNMgr_force_go_home(manager);
                     aSNMgr_walk_npc(manager, game);

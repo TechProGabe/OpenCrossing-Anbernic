@@ -1081,6 +1081,7 @@ extern void mFI_BGDisplayListRefresh(xyz_t wpos) {
     int nearest_bz;
     int num;
     int temp;
+    int acre_draw;
 
     disp_bitfield = 0;
     where_bitfield = 0;
@@ -1093,7 +1094,14 @@ extern void mFI_BGDisplayListRefresh(xyz_t wpos) {
         }
     }
 
-    if (g_pc_settings.reduce_acre_draw < 2) {
+    /* Endless acres let the camera see past the acre edge, so "current acre
+     * only" would show blank ground there: fall back to cross. */
+    acre_draw = g_pc_settings.reduce_acre_draw;
+    if (g_pc_settings.borderless_acres && acre_draw > 1) {
+        acre_draw = 1;
+    }
+
+    if (acre_draw < 2) {
         mFI_WhereisInBlock(&where_bitfield, wpos);
 
         /* Check if the acres to the immediate left or right should be displayed */
@@ -1111,7 +1119,7 @@ extern void mFI_BGDisplayListRefresh(xyz_t wpos) {
         if (((where_bitfield >> 3) & 1) != 0 && mFI_BlockCheck(bx, nearest_bz)) {
             mFI_BGDispMake(&disp_bitfield, bx, nearest_bz); /* display acre immediately above */
 
-            if (g_pc_settings.reduce_acre_draw == 0) {
+            if (acre_draw == 0) {
                 nearest_bx = bx - 1;
                 if ((where_bitfield & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
                     mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre above and to the left */
@@ -1128,7 +1136,7 @@ extern void mFI_BGDisplayListRefresh(xyz_t wpos) {
             if (((where_bitfield >> 5) & 1) != 0 && mFI_BlockCheck(bx, nearest_bz)) {
                 mFI_BGDispMake(&disp_bitfield, bx, nearest_bz); /* display acre immediately below */
 
-                if (g_pc_settings.reduce_acre_draw == 0) {
+                if (acre_draw == 0) {
                     nearest_bx = bx - 1;
                     if ((where_bitfield & 1) != 0 && mFI_BlockCheck(nearest_bx, nearest_bz)) {
                         mFI_BGDispMake(&disp_bitfield, nearest_bx, nearest_bz); /* display acre below and to the left */

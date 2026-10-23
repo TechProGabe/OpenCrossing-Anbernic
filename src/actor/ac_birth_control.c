@@ -4,7 +4,9 @@
 #include "m_field_info.h"
 #include "m_common_data.h"
 #include "GBA2/gba2.h"
+#include "m_player_lib.h"
 
+static void aBC_actor_ct(ACTOR*, GAME*);
 static void aBC_actor_move(ACTOR*, GAME*);
 
 ACTOR_PROFILE Birth_Control_Profile = {
@@ -14,7 +16,7 @@ ACTOR_PROFILE Birth_Control_Profile = {
   EMPTY_NO,
   ACTOR_OBJ_BANK_KEEP,
   sizeof(BIRTH_CONTROL_ACTOR),
-  mActor_NONE_PROC1,
+  &aBC_actor_ct,
   mActor_NONE_PROC1,
   &aBC_actor_move,
   mActor_NONE_PROC1,
@@ -49,28 +51,43 @@ static void aBC_deleteActor_part(GAME_PLAY* play, int part) {
   s8 check_bx;
   s8 check_bz;
   ACTOR* actor = play->actor_info.list[part].actor;
+  int dx;
+  int dz;
 
   while (TRUE) {
     if (actor == NULL) {
       break;
     }
-    
+
     check_bx = actor->block_x;
     check_bz = actor->block_z;
 
-    /* Delete any actors which aren't in the current block or the last block */
-    if (
-      (check_bx >= 0 && check_bx != last_bx && check_bx != now_bx) &&
-      (check_bz >= 0 && check_bz != last_bz && check_bz != now_bz)
-    ) {
-      Actor_delete(actor);
+    if (g_mPlib_wade_disabled) {
+      dx = ABS(check_bx - now_bx);
+      dz = ABS(check_bz - now_bz);
+
+      /* Keep actors in adjacent acres alive so borderless camera movement does not cause pop-in. */
+      if (check_bx >= 0 && check_bz >= 0) {
+        if (dx > 1 || dz > 1) {
+          Actor_delete(actor);
+        }
+      }
+    } else {
+      /* Delete any actors which aren't in the current block or the last block */
+      if (
+        (check_bx >= 0 && check_bx != last_bx && check_bx != now_bx) &&
+        (check_bz >= 0 && check_bz != last_bz && check_bz != now_bz)
+      ) {
+        Actor_delete(actor);
+      }
     }
 
     actor = actor->next_actor;
   }
 }
 
-static int aBC_setupOtherActor(GAME_PLAY* play, mActor_name_t actor_id, s16 profile, f32 pos_x, f32 pos_z, mActor_name_t clear_item) {
+static int aBC_setupOtherActor(GAME_PLAY* play, mActor_name_t actor_id, s16 profile, f32 pos_x, f32 pos_z,
+                               mActor_name_t clear_item, int bx, int bz) {
   ACTOR* actor;
   xyz_t pos;
   int res = FALSE;
@@ -84,7 +101,7 @@ static int aBC_setupOtherActor(GAME_PLAY* play, mActor_name_t actor_id, s16 prof
     profile,
     pos.x, pos.y, pos.z,
     0, 0, 0,
-    play->block_table.block_x, play->block_table.block_z,
+    bx, bz,
     -1,
     actor_id,
     actor_id,
@@ -103,15 +120,18 @@ static int aBC_setupOtherActor(GAME_PLAY* play, mActor_name_t actor_id, s16 prof
   return res;
 }
 
-static void aBC_setupActor(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play) {
-  mFI_block_tbl_c* block_table = &play->block_table;
-  mActor_name_t* item_p = block_table->items;
-  f32 base_x = block_table->pos_x;
-  f32 base_z = block_table->pos_z;
+static void aBC_setupActor(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play, int bx, int bz) {
+  mActor_name_t* item_p = mFI_BkNumtoUtFGTop(bx, bz);
+  f32 base_x = bx * mFI_BK_WORLDSIZE_X_F;
+  f32 base_z = bz * mFI_BK_WORLDSIZE_Z_F;
   int setup_actor_flag = FALSE;
   mActor_name_t clear_item;
   int ut_z;
   int ut_x;
+
+  if (item_p == NULL) {
+    return;
+  }
 
   for (ut_z = 0; ut_z < UT_Z_NUM; ut_z++) {
     for (ut_x = 0; ut_x < UT_X_NUM; ut_x++) {
@@ -120,7 +140,9 @@ static void aBC_setupActor(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play) 
         {
           int idx = *item_p - ETC_START;
 
-          setup_actor_flag |= aBC_setupOtherActor(play, *item_p, move_obj_profile_table[idx], base_x + aBC_pos_table[ut_x], base_z + aBC_pos_table[ut_z], EMPTY_NO);
+          setup_actor_flag |= aBC_setupOtherActor(play, *item_p, move_obj_profile_table[idx],
+                                                  base_x + aBC_pos_table[ut_x],
+                                                  base_z + aBC_pos_table[ut_z], EMPTY_NO, bx, bz);
           break;
         }
 
@@ -136,13 +158,17 @@ static void aBC_setupActor(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play) 
           }
 
           idx = *item_p - ACTOR_PROP_START;
-          setup_actor_flag |= aBC_setupOtherActor(play, *item_p, props_profile_table[idx], base_x + aBC_pos_table[ut_x], base_z + aBC_pos_table[ut_z], clear_item);
+          setup_actor_flag |= aBC_setupOtherActor(play, *item_p, props_profile_table[idx],
+                                                  base_x + aBC_pos_table[ut_x],
+                                                  base_z + aBC_pos_table[ut_z], clear_item, bx, bz);
           break;
         }
 
         case NAME_TYPE_STRUCT:
-          if (Common_Get(clip).structure_clip != NULL) {
-            STRUCTURE_ACTOR* actor = (*Common_Get(clip).structure_clip->setup_actor_proc)((GAME*)play, *item_p, -1, base_x + aBC_pos_table[ut_x], base_z + aBC_pos_table[ut_z]);
+          if (CLIP(structure_clip) != NULL) {
+            STRUCTURE_ACTOR* actor = CLIP(structure_clip)->setup_actor_proc((GAME*)play, *item_p, -1,
+                                                                            base_x + aBC_pos_table[ut_x],
+                                                                            base_z + aBC_pos_table[ut_z]);
             setup_actor_flag |= actor == NULL;
           }
 
@@ -156,7 +182,8 @@ static void aBC_setupActor(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play) 
   birth_control->setup_actor_flag = setup_actor_flag;
 }
 
-static int aBC_setupCommonMvActor(GAME_PLAY* play, mFM_move_actor_c* mv_actor_list, int mv_actor_list_no, s16 profile, f32 pos_x, f32 pos_z) {
+static int aBC_setupCommonMvActor(GAME_PLAY* play, mFM_move_actor_c* mv_actor_list, int mv_actor_list_no, s16 profile,
+                                  f32 pos_x, f32 pos_z, int bx, int bz) {
   Actor_info* actor_info = &play->actor_info;
   xyz_t pos;
   f32 y;
@@ -172,7 +199,7 @@ static int aBC_setupCommonMvActor(GAME_PLAY* play, mFM_move_actor_c* mv_actor_li
     profile,
     pos.x, pos.y, pos.z,
     0, 0, 0,
-    play->block_table.block_x, play->block_table.block_z,
+    bx, bz,
     mv_actor_list_no,
     mv_actor_list->name_id,
     mv_actor_list->arg,
@@ -185,14 +212,10 @@ static int aBC_setupCommonMvActor(GAME_PLAY* play, mFM_move_actor_c* mv_actor_li
   return res;
 }
 
-static void aBC_setupMvActor(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play) {
-  mFM_move_actor_c* mv_actor_list_p = birth_control->move_actor_data;
+static u16 aBC_setupMvActor(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play, u16 mv_actor_bitfield,
+                            mFM_move_actor_c* mv_actor_list_p, int bx, int bz, f32 base_x, f32 base_z) {
   
   if (mv_actor_list_p != NULL) {
-    u16 mv_actor_bitfield = birth_control->move_actor_bitfield;
-    mFI_block_tbl_c* block_table = &play->block_table;
-    f32 base_x = block_table->pos_x;
-    f32 base_z = block_table->pos_z;
     int was_born;
     int i;
 
@@ -202,15 +225,21 @@ static void aBC_setupMvActor(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play
 
         switch (ITEM_NAME_GET_TYPE(mv_actor_name)) {
           case NAME_TYPE_ITEM2:
-            was_born = aBC_setupCommonMvActor(play, mv_actor_list_p, i, move_obj_profile_table[mv_actor_name - ETC_START], base_x + aBC_pos_table[mv_actor_list_p->ut_x], base_z + aBC_pos_table[mv_actor_list_p->ut_z]);
+            was_born = aBC_setupCommonMvActor(play, mv_actor_list_p, i, move_obj_profile_table[mv_actor_name - ETC_START],
+                                              base_x + aBC_pos_table[mv_actor_list_p->ut_x],
+                                              base_z + aBC_pos_table[mv_actor_list_p->ut_z], bx, bz);
             break;
           case NAME_TYPE_ACTOR:
-            was_born = aBC_setupCommonMvActor(play, mv_actor_list_p, i, actor_profile_table[mv_actor_name - MISC_ACTOR_START], base_x + aBC_pos_table[mv_actor_list_p->ut_x], base_z + aBC_pos_table[mv_actor_list_p->ut_z]);
+            was_born = aBC_setupCommonMvActor(play, mv_actor_list_p, i, actor_profile_table[mv_actor_name - MISC_ACTOR_START],
+                                              base_x + aBC_pos_table[mv_actor_list_p->ut_x],
+                                              base_z + aBC_pos_table[mv_actor_list_p->ut_z], bx, bz);
             break;
           case NAME_TYPE_SPNPC:
           case NAME_TYPE_NPC:
             if (Common_Get(clip).npc_clip != NULL && Common_Get(clip).npc_clip->setupActor_proc != NULL) {
-              was_born = (*Common_Get(clip).npc_clip->setupActor_proc)(play, mv_actor_name, mv_actor_list_p->npc_info_idx, i, mv_actor_list_p->arg, block_table->block_x, block_table->block_z, mv_actor_list_p->ut_x, mv_actor_list_p->ut_z);
+              was_born = (*Common_Get(clip).npc_clip->setupActor_proc)(play, mv_actor_name, mv_actor_list_p->npc_info_idx,
+                                                                       i, mv_actor_list_p->arg, bx, bz,
+                                                                       mv_actor_list_p->ut_x, mv_actor_list_p->ut_z);
             }
             else {
               was_born = FALSE;
@@ -229,8 +258,9 @@ static void aBC_setupMvActor(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play
       mv_actor_list_p++;
     }
 
-    birth_control->move_actor_bitfield = mv_actor_bitfield;
   }
+
+  return mv_actor_bitfield;
 }
 
 static int aBC_chk_near_boat_block(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play) {
@@ -287,6 +317,71 @@ static void aBC_set_boat(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play) {
   }
 }
 
+static const BlockOrUnit_c l_near_block_lookup_table[][3] = {
+  { { 0, -1 }, { -1, -1 }, { -1, 0 } },
+  { { 0, 1 }, { -1, 1 }, { -1, 0 } },
+  { { 0, -1 }, { 1, -1 }, { 1, 0 } },
+  { { 0, 1 }, { 1, 1 }, { 1, 0 } },
+};
+
+static void aBC_spawn_actors_in_nearby_blocks(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play) {
+  const BlockOrUnit_c* ofs_p = l_near_block_lookup_table[birth_control->last_quadrant];
+  int i;
+
+  for (i = 0; i < 3; i++) {
+    int bx = play->block_table.block_x + ofs_p[i].x;
+    int bz = play->block_table.block_z + ofs_p[i].z;
+
+    if (mFI_BlockCheck(bx, bz) == TRUE) {
+      f32 pos_x;
+      f32 pos_z;
+      u16 bit_data;
+
+      aBC_setupActor(birth_control, play, bx, bz);
+
+      birth_control->move_actor_data[1 + i] = mFI_MoveActorListDma(bx, bz);
+      mNpc_AddActor_inBlock(birth_control->move_actor_data[1 + i], bx, bz);
+
+      mFI_BkNum2WposXZ(&pos_x, &pos_z, bx, bz);
+      bit_data = aBC_setupMvActor(birth_control, play, mFI_GetMoveActorBitData(bx, bz),
+                                  birth_control->move_actor_data[1 + i], bx, bz, pos_x, pos_z);
+      mFI_SetMoveActorBitData(bx, bz, bit_data);
+    }
+  }
+}
+
+static int aBC_nearby_refresh_request = FALSE;
+
+void aBC_RequestNearbyRefresh(void) {
+  aBC_nearby_refresh_request = TRUE;
+}
+
+static int aBC_check_update_actors_in_nearby_blocks(BIRTH_CONTROL_ACTOR* birth_control, GAME_PLAY* play) {
+  int quadrant;
+  int block_ux;
+  int block_uz;
+
+  if (mFI_Wpos2UtNum_inBlock(&block_ux, &block_uz, GET_PLAYER_ACTOR_ACTOR(play)->world.position) == FALSE) {
+    return FALSE;
+  }
+
+  quadrant = block_ux >= 8;
+  quadrant |= (block_uz >= 8) << 1;
+
+  if (quadrant != birth_control->last_quadrant) {
+    birth_control->last_quadrant = quadrant;
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+static void aBC_actor_ct(ACTOR* actorx, GAME* game) {
+  BIRTH_CONTROL_ACTOR* birth_control = (BIRTH_CONTROL_ACTOR*)actorx;
+
+  birth_control->last_quadrant = -1;
+}
+
 static void aBC_actor_move(ACTOR* actorx, GAME* game) {
   BIRTH_CONTROL_ACTOR* birth_control = (BIRTH_CONTROL_ACTOR*)actorx;
   GAME_PLAY* play = (GAME_PLAY*)game;
@@ -300,10 +395,10 @@ static void aBC_actor_move(ACTOR* actorx, GAME* game) {
     int bx = play->block_table.block_x;
     int bz = play->block_table.block_z;
 
-    birth_control->move_actor_data = mFI_MoveActorListDma(bx, bz);
-    mNpc_AddActor_inBlock(birth_control->move_actor_data, bx, bz);
+    birth_control->move_actor_data[0] = mFI_MoveActorListDma(bx, bz);
+    mNpc_AddActor_inBlock(birth_control->move_actor_data[0], bx, bz);
 
-    if (birth_control->move_actor_data != NULL) {
+    if (birth_control->move_actor_data[0] != NULL) {
       birth_control->move_actor_bitfield = mFI_GetMoveActorBitData(bx, bz);
       birth_control->move_actor_list_exists_flag = TRUE;
     }
@@ -317,7 +412,7 @@ static void aBC_actor_move(ACTOR* actorx, GAME* game) {
   if (play->game.pad_initialized == TRUE) {
     if (birth_control->setup_actor_flag) {
       aBC_deleteActor_part(play, ACTOR_PART_ITEM);
-      aBC_setupActor(birth_control, play);
+      aBC_setupActor(birth_control, play, play->block_table.block_x, play->block_table.block_z);
     }
 
     if (birth_control->move_actor_list_exists_flag == TRUE && birth_control->move_actor_bitfield != 0) {
@@ -325,8 +420,20 @@ static void aBC_actor_move(ACTOR* actorx, GAME* game) {
       int bz = play->block_table.block_z;
 
       aBC_deleteActor_part(play, ACTOR_PART_NPC);
-      aBC_setupMvActor(birth_control, play);
+      birth_control->move_actor_bitfield = aBC_setupMvActor(birth_control, play, birth_control->move_actor_bitfield,
+                                                            birth_control->move_actor_data[0],
+                                                            play->block_table.block_x, play->block_table.block_z,
+                                                            play->block_table.pos_x, play->block_table.pos_z);
       mFI_SetMoveActorBitData(bx, bz, birth_control->move_actor_bitfield);
+    }
+
+    if (aBC_nearby_refresh_request) {
+      aBC_nearby_refresh_request = FALSE;
+      birth_control->last_quadrant = -1;
+    }
+
+    if (g_mPlib_wade_disabled && aBC_check_update_actors_in_nearby_blocks(birth_control, play)) {
+      aBC_spawn_actors_in_nearby_blocks(birth_control, play);
     }
   }
 
