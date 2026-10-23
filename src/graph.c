@@ -449,6 +449,15 @@ extern void graph_proc(void* arg) {
                 ticks = (int)tick_accumulator;
                 tick_accumulator -= (double)ticks;
                 if (ticks < 1) ticks = 1;
+                {   /* NES games: one emulated frame per screen update. Batching
+                     * ticks there shows 2-3 NES frames at once and bunches
+                     * their audio (hardware test 4). */
+                    extern int g_pc_nes_active;
+                    if (g_pc_nes_active) {
+                        ticks = 1;
+                        tick_accumulator = 0.0;
+                    }
+                }
                 for (t = 0; t < ticks; t++) {
                     g_pc_frameskip_active = (t < ticks - 1) ? 1 : 0;
                     PC_DIAG(10, "graph_proc: tick %d/%d frameskip=%d\n", t+1, ticks, g_pc_frameskip_active);

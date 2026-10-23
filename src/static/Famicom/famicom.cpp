@@ -12,6 +12,7 @@ extern "C" {
     unsigned short* pc_fixnes_frame(void);
     void pc_fixnes_render_frame(unsigned short* fb);
     void pc_fixnes_cleanup(void);
+    void pc_fixnes_wait_idle(void);
     void pc_fixnes_reset(void);
 
     /* fixNES battery RAM — sync with famicomCommon.bbramp for save persistence */
@@ -2122,7 +2123,9 @@ extern int famicom_cleanup() {
     int res = FALSE;
 
 #ifdef TARGET_PC
-    /* Sync fixNES battery RAM back to bbramp before save extraction */
+    /* Sync fixNES battery RAM back to bbramp before save extraction
+     * (the emulator runs on its own thread: let its frame finish) */
+    pc_fixnes_wait_idle();
     pc_sync_prgram_to_bbramp();
     pc_fixnes_cleanup();
 #endif
