@@ -1310,7 +1310,9 @@ void mCD_toNextLand(void) {
     int rtc_enabled;
 
     if (l_keepSave_set != TRUE) {
-        OSReport("[PC] toNextLand: l_keepSave not set, aborting\n");
+        /* Runs on every play-scene teardown (m_play.c), not just travel, so
+         * this is the normal case. It used to log here, which looked like
+         * an error in every user's log.txt. */
         return;
     }
 
