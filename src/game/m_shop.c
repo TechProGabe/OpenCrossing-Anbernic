@@ -11,6 +11,9 @@
 #include "m_name_table.h"
 #include "m_room_type.h"
 #include "m_fg_type.h"
+#ifdef TARGET_PC
+#include "pc_settings.h"
+#endif
 
 extern mActor_name_t* mSP_ftr_list[];
 extern mActor_name_t* mSP_binsen_list[];
@@ -1312,7 +1315,15 @@ extern int mSP_RenewShopLevel() {
 extern int mSP_GetRealShopLevel() {
     u32 sales_sum = mSP_GetSalesSum();
 
-    if (sales_sum >= mSP_DSUPER_SUM) {
+#ifdef TARGET_PC
+    /* Original rule: Nookington's also needs a shopper from another town
+     * (visitor_flag). The shop_no_visitor setting (default on) skips it.
+     * Same idea as flyngmt/ACGC-PC-Port b5f686f. */
+    if (sales_sum >= mSP_DSUPER_SUM &&
+        (g_pc_settings.shop_no_visitor || Save_Get(shop).visitor_flag != FALSE)) {
+#else
+    if (sales_sum >= mSP_DSUPER_SUM && Save_Get(shop).visitor_flag != FALSE) {
+#endif
         return mSP_SHOP_TYPE_DSUPER;
     } else if (sales_sum >= mSP_SUPER_SUM) {
         return mSP_SHOP_TYPE_SUPER;

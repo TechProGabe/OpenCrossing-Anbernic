@@ -74,6 +74,8 @@ enum {
     MI_PARTICLE_QUALITY,
     MI_PRELOAD_TEXTURES,
     MI_DISABLE_RESETTI,
+    MI_BELLS_TO_WALLET,
+    MI_SHOP_NO_VISITOR,
     MI_NES_ASPECT,
     MI_KB_BASE,
     MI_COUNT = MI_KB_BASE + KB_COUNT,
@@ -109,6 +111,8 @@ static const char* menu_labels[MI_COUNT] = {
     [MI_PARTICLE_QUALITY]   = "Weather effects",
     [MI_PRELOAD_TEXTURES]   = "Preload Textures",
     [MI_DISABLE_RESETTI]    = "Disable Resetti",
+    [MI_BELLS_TO_WALLET]    = "Bells to Wallet",
+    [MI_SHOP_NO_VISITOR]    = "Shop Upgrade",
     [MI_NES_ASPECT]         = "NES Aspect",
     /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: NULL, handled via pc_keybinding_label() */
 };
@@ -120,8 +124,10 @@ static const char* get_item_label(int i) {
 }
 
 /* ---- Menu tabs ---- */
-enum { TAB_VIDEO, TAB_AUDIO, TAB_CONTROLS, TAB_DEBUG, TAB_PERF, TAB_COUNT };
-static const char* tab_labels[TAB_COUNT] = { "VIDEO", "AUDIO", "CTRL", "DEBUG", "PERF" };
+/* GAME holds gameplay toggles; verbose logging lives under PERF with the
+ * other diagnostics (the menu is 28 columns, no room for a sixth tab). */
+enum { TAB_VIDEO, TAB_AUDIO, TAB_CONTROLS, TAB_GAME, TAB_PERF, TAB_COUNT };
+static const char* tab_labels[TAB_COUNT] = { "VIDEO", "AUDIO", "CTRL", "GAME", "PERF" };
 static int s_active_tab = 0;
 
 /* Which tab each menu item belongs to (indexed by MI_*) */
@@ -135,12 +141,12 @@ static const int menu_item_tab[MI_COUNT] = {
     [MI_VSYNC]           = TAB_VIDEO,
     [MI_MSAA]            = TAB_VIDEO,
     [MI_ZOOM_ENABLED]    = TAB_VIDEO,
-    [MI_ENDLESS_ACRES]   = TAB_VIDEO,
+    [MI_ENDLESS_ACRES]   = TAB_GAME,
     [MI_FPS_TARGET]      = TAB_VIDEO,
     [MI_RENDER_SCALE]    = TAB_VIDEO,
     [MI_WINDOW_SIZE]     = TAB_VIDEO,
     [MI_SCALE_MODE]      = TAB_VIDEO,
-    [MI_VERBOSE]         = TAB_DEBUG,
+    [MI_VERBOSE]         = TAB_PERF,
     [MI_CTRL_SWAP_AB]       = TAB_CONTROLS,
     [MI_CTRL_DPAD_STICK]    = TAB_CONTROLS,
     [MI_LEFT_DEADZONE]      = TAB_CONTROLS,
@@ -153,7 +159,9 @@ static const int menu_item_tab[MI_COUNT] = {
     [MI_REDUCE_ACRE_DRAW]   = TAB_PERF,
     [MI_PARTICLE_QUALITY]   = TAB_PERF,
     [MI_PRELOAD_TEXTURES]   = TAB_PERF,
-    [MI_DISABLE_RESETTI]    = TAB_DEBUG,
+    [MI_DISABLE_RESETTI]    = TAB_GAME,
+    [MI_BELLS_TO_WALLET]    = TAB_GAME,
+    [MI_SHOP_NO_VISITOR]    = TAB_GAME,
     [MI_NES_ASPECT]         = TAB_VIDEO,
     /* MI_KB_BASE..MI_KB_BASE+KB_COUNT-1: handled by item_tab() helper below */
 };
@@ -269,6 +277,8 @@ static void menu_get_value(int item, char* buf, int sz) {
         break;
     }
     case MI_DISABLE_RESETTI: snprintf(buf, sz, "%s", g_pc_settings.disable_resetti ? "ON" : "OFF"); break;
+    case MI_BELLS_TO_WALLET: snprintf(buf, sz, "%s", g_pc_settings.bells_to_wallet ? "ON" : "OFF"); break;
+    case MI_SHOP_NO_VISITOR: snprintf(buf, sz, "%s", g_pc_settings.shop_no_visitor ? "No visitor" : "Original"); break;
     case MI_NES_ASPECT:      snprintf(buf, sz, "%s", g_pc_settings.nes_aspect ? "4:3" : "Stretch"); break;
     case MI_ENDLESS_ACRES:   snprintf(buf, sz, "%s", g_pc_settings.borderless_acres ? "ON" : "OFF"); break;
     default:
@@ -470,6 +480,8 @@ static void menu_adjust(int item, int dir) {
         break;
     }
     case MI_DISABLE_RESETTI: g_pc_settings.disable_resetti ^= 1; break;
+    case MI_BELLS_TO_WALLET: g_pc_settings.bells_to_wallet ^= 1; break;
+    case MI_SHOP_NO_VISITOR: g_pc_settings.shop_no_visitor ^= 1; break;
     case MI_NES_ASPECT:      g_pc_settings.nes_aspect ^= 1; break;
     case MI_ENDLESS_ACRES:
         g_pc_settings.borderless_acres ^= 1;
