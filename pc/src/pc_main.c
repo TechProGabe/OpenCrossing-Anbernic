@@ -9,6 +9,13 @@
 #include "pc_overlay.h"
 #include "pc_typing.h"
 
+#ifndef _WIN32
+#include <execinfo.h>
+#include <fcntl.h>
+#include <ucontext.h>
+#include <unistd.h>
+#endif
+
 /* prefer discrete GPU on laptops */
 #ifdef _WIN32
 __declspec(dllexport) unsigned long NvOptimusEnablement = 1;
@@ -64,12 +71,87 @@ static LONG WINAPI pc_veh_handler(PEXCEPTION_POINTERS ep) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 #else
+/* ---- Crash report for faults nothing recovers from ----
+ * Written to stderr (the launcher sends it to log.txt even when stdout is
+ * /dev/null) and to crash.log, then fsync'd: a handheld usually gets
+ * powered off right after a crash. Signal handler context, so only
+ * write()/open()/fsync() and preformatted text. Addresses are absolute (the
+ * binary isn't PIE), so `addr2line -e AnimalCrossing <pc>` gives the line. */
+static void crash_puts(int fd, const char* s) {
+    const char* e = s;
+    while (*e) e++;
+    if (fd >= 0) (void)!write(fd, s, (size_t)(e - s));
+}
+
+static void crash_hex(int fd, unsigned long v) {
+    static const char hx[] = "0123456789abcdef";
+    char buf[10];
+    int i;
+    buf[0] = '0';
+    buf[1] = 'x';
+    for (i = 9; i >= 2; i--) {
+        buf[i] = hx[v & 0xF];
+        v >>= 4;
+    }
+    if (fd >= 0) (void)!write(fd, buf, sizeof(buf));
+}
+
+static void crash_report_to(int fd, int sig, siginfo_t* info, void* ucontext) {
+    void* frames[48];
+    int n;
+
+    crash_puts(fd, "\n=== CRASH: ");
+    switch (sig) {
+        case SIGSEGV: crash_puts(fd, "SIGSEGV (bad memory access)"); break;
+        case SIGBUS:  crash_puts(fd, "SIGBUS (unaligned or bad access)"); break;
+        case SIGILL:  crash_puts(fd, "SIGILL (illegal instruction)"); break;
+        case SIGFPE:  crash_puts(fd, "SIGFPE (arithmetic fault)"); break;
+        case SIGABRT: crash_puts(fd, "SIGABRT (abort, often heap corruption)"); break;
+        default:      crash_puts(fd, "signal"); break;
+    }
+    crash_puts(fd, " ===\nfault addr: ");
+    crash_hex(fd, info ? (unsigned long)(uintptr_t)info->si_addr : 0);
+#if defined(__arm__)
+    if (ucontext != NULL) {
+        const ucontext_t* uc = (const ucontext_t*)ucontext;
+        crash_puts(fd, "\npc: ");
+        crash_hex(fd, uc->uc_mcontext.arm_pc);
+        crash_puts(fd, "  lr: ");
+        crash_hex(fd, uc->uc_mcontext.arm_lr);
+        crash_puts(fd, "  sp: ");
+        crash_hex(fd, uc->uc_mcontext.arm_sp);
+    }
+#else
+    (void)ucontext;
+#endif
+    crash_puts(fd, "\nimage: ");
+    crash_hex(fd, pc_image_base);
+    crash_puts(fd, " - ");
+    crash_hex(fd, pc_image_end);
+    crash_puts(fd, "\nbacktrace:\n");
+    n = backtrace(frames, (int)(sizeof(frames) / sizeof(frames[0])));
+    if (fd >= 0) backtrace_symbols_fd(frames, n, fd);
+    crash_puts(fd, "=== addr2line -e AnimalCrossing <pc> <lr> ===\n");
+}
+
+static void pc_write_crash_report(int sig, siginfo_t* info, void* ucontext) {
+    int fd;
+
+    crash_report_to(STDERR_FILENO, sig, info, ucontext);
+    fd = open("crash.log", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        crash_report_to(fd, sig, info, ucontext);
+        fsync(fd);
+        close(fd);
+    }
+    fsync(STDERR_FILENO);
+}
+
 /* POSIX equivalent of VEH — longjmp from signal handler.
  * Must unblock the signal before longjmp, otherwise it stays masked
  * and subsequent faults will kill the process instead of being caught. */
 static void pc_signal_handler(int sig, siginfo_t* info, void* ucontext) {
-    (void)ucontext;
-    if (pc_active_jmpbuf != NULL) {
+    if (pc_active_jmpbuf != NULL && sig != SIGABRT) {
         pc_last_crash_addr = (unsigned int)(uintptr_t)info->si_addr;
         pc_last_crash_data_addr = (sig == SIGSEGV || sig == SIGBUS) ?
             (unsigned int)(uintptr_t)info->si_addr : 0;
@@ -82,6 +164,7 @@ static void pc_signal_handler(int sig, siginfo_t* info, void* ucontext) {
         sigprocmask(SIG_UNBLOCK, &ss, NULL);
         longjmp(*buf, 1);
     }
+    pc_write_crash_report(sig, info, ucontext);
     signal(sig, SIG_DFL);
     raise(sig);
 }
@@ -107,6 +190,15 @@ void pc_crash_protection_init(void) {
         /* armv7: unaligned LDRD/STRD/VFP accesses raise SIGBUS, not SIGSEGV.
          * Catch it so game-frame recovery + crash logging work on device. */
         sigaction(SIGBUS, &sa, NULL);
+        /* Not recoverable, but worth a crash report (glibc aborts on heap
+         * corruption). */
+        sigaction(SIGABRT, &sa, NULL);
+        /* backtrace() loads libgcc_s on first use, which isn't safe inside
+         * a signal handler: warm it up now. */
+        {
+            void* warm[1];
+            (void)backtrace(warm, 1);
+        }
 #endif
         installed = 1;
     }
