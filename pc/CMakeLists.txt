@@ -392,6 +392,15 @@ list(FILTER GAME_CXX_SOURCES EXCLUDE REGEX ".*/Runtime\\.PPCEABI\\.H/.*")
 list(FILTER GAME_CXX_SOURCES EXCLUDE REGEX ".*/MSL_C\\.PPCEABI\\.bare\\.H/.*")
 list(FILTER GAME_CXX_SOURCES EXCLUDE REGEX ".*/Famicom/.*")
 
+# NES: the GameCube core (ks_nes_core) is PPC asm, guarded out with TARGET_PC;
+# fixNES runs the games instead (pc/src/pc_nes_fixnes.c)
+list(APPEND GAME_CXX_SOURCES
+    ${DECOMP_ROOT}/src/static/Famicom/famicom.cpp
+    ${DECOMP_ROOT}/src/static/Famicom/famicom_nesinfo.cpp
+    ${DECOMP_ROOT}/src/static/Famicom/ks_nes_core.cpp
+    ${DECOMP_ROOT}/src/static/Famicom/ks_nes_draw.cpp
+)
+
 # Exclude emu64_print.cpp (it's #included directly from emu64.c, not a standalone file)
 list(FILTER GAME_CXX_SOURCES EXCLUDE REGEX ".*/emu64_print\\.cpp$")
 
@@ -426,6 +435,7 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_keybindings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_overlay.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nes_fixnes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_stubs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_stubs_cpp.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_assets.c
@@ -551,10 +561,48 @@ if(WIN32)
 endif()
 
 # =============================================================================
+# fixNES: vendored NES emulator (MIT, FIX94), as in flyngmt/ACGC-PC-Port
+# =============================================================================
+# No include dir on purpose: fixNES has an audio.h that would shadow the
+# game's. Its own files find their headers next to them; pc_nes_fixnes.c
+# includes them by relative path.
+set(FIXNES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib/fixnes)
+file(GLOB FIXNES_MAPPER_SOURCES ${FIXNES_DIR}/mapper/*.c)
+set(FIXNES_SOURCES
+    ${FIXNES_DIR}/cpu.c
+    ${FIXNES_DIR}/ppu.c
+    ${FIXNES_DIR}/apu.c
+    ${FIXNES_DIR}/mem.c
+    ${FIXNES_DIR}/input.c
+    ${FIXNES_DIR}/mapper.c
+    ${FIXNES_DIR}/mapperList.c
+    ${FIXNES_DIR}/vrc_irq.c
+    ${FIXNES_DIR}/audio.c
+    ${FIXNES_DIR}/fm2play.c
+    ${FIXNES_DIR}/audio_fds.c
+    ${FIXNES_DIR}/audio_mmc5.c
+    ${FIXNES_DIR}/audio_vrc6.c
+    ${FIXNES_DIR}/audio_vrc7.c
+    ${FIXNES_DIR}/audio_n163.c
+    ${FIXNES_DIR}/audio_s5b.c
+    ${FIXNES_MAPPER_SOURCES}
+)
+# Third-party, no decomp UB: optimize, and inline the per-cycle hot paths.
+# No COL_TEX_BSWAP: plain RGB565 output uploads as-is on GLES.
+set_source_files_properties(${FIXNES_SOURCES} PROPERTIES
+    COMPILE_OPTIONS "-w;-O2"
+    COMPILE_DEFINITIONS "DO_INLINE_ATTRIBS=1"
+)
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nes_fixnes.c PROPERTIES
+    COMPILE_OPTIONS "-O2"
+)
+
+# =============================================================================
 # Build executable
 # =============================================================================
 add_executable(ac_pc
     ${PC_SOURCES}
+    ${FIXNES_SOURCES}
     ${GAME_C_SOURCES}
     ${GAME_CXX_SOURCES}
     ${RC_FILE}
