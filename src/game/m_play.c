@@ -404,6 +404,21 @@ static void VR_Box_ct(GAME_PLAY* play) {
     Global_kankyo_ct((GAME*)play, &play->kankyo);
 }
 
+#ifdef TARGET_PC
+/* Scene-build step times (us) for the [SCENE] log line in graph.c:
+ * scene read, field (acres), actors, museum data, everything else is
+ * the remainder of game_ct. Reset by graph.c before each game_ct. */
+unsigned long long g_pc_scene_step_us[4];
+#define PC_SCENE_STEP(i, call)                                        \
+    do {                                                              \
+        unsigned long long _pc_t0 = pc_prof_now_us();                 \
+        call;                                                         \
+        g_pc_scene_step_us[i] += pc_prof_now_us() - _pc_t0;           \
+    } while (0)
+#else
+#define PC_SCENE_STEP(i, call) call
+#endif
+
 extern void play_init(GAME* game) {
     GAME_PLAY* play = (GAME_PLAY*)game;
     GRAPH* graph = game->graph;
@@ -439,7 +454,7 @@ extern void play_init(GAME* game) {
 
     play->submenu_ground_idx = -1;
 
-    Gameplay_Scene_Read(play, Save_Get(scene_no));
+    PC_SCENE_STEP(0, Gameplay_Scene_Read(play, Save_Get(scene_no)));
 
     mSM_submenu_ct(&play->submenu);
     play->submenu.mode = mSM_MODE_IDLE;
@@ -486,10 +501,10 @@ extern void play_init(GAME* game) {
         my_malloc_current = &my_malloc_func;
     }
 
-    mFM_FieldInit(play);
+    PC_SCENE_STEP(1, mFM_FieldInit(play));
     VR_Box_ct(play);
-    mMmd_MakeMuseumDisplayData();
-    Actor_info_ct(game, &play->actor_info, play->player_data);
+    PC_SCENE_STEP(3, mMmd_MakeMuseumDisplayData());
+    PC_SCENE_STEP(2, Actor_info_ct(game, &play->actor_info, play->player_data));
     play->draw_chk_proc = none_proc1;
     mMsg_ct(game);
     mEv_2nd_init(&play->event);
