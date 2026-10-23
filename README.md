@@ -42,11 +42,11 @@ Every H700 Anbernic uses the same chip, so one build runs on all of them.
 | RG28XX | 640×480 | Community tested |
 | RG CubeXX | 720×720 | Untested, expect letterboxing |
 
-Older RG35XX models and RK3566 devices won't work. Tried a device that isn't listed? Open an issue with `ports/ac-gc/log.txt` attached, whether it worked or not.
+Older RG35XX models won't work. RK3566 and other Rockchip handhelds are untested: if your firmware ships 32-bit libraries, give it a go. Tried a device that isn't listed? Open an issue with `ports/ac-gc/log.txt` attached, whether it worked or not.
 
 ## Troubleshooting
 
-When reporting a bug, attach `ports/ac-gc/log.txt`. It gets rewritten every launch.
+When reporting a bug, attach `ports/ac-gc/log.txt`, plus `crash.log` from the same folder if the game crashed. The log is rewritten every launch.
 
 - **"No game disc image found" or "Wrong game version":** your disc image is missing from `ports/ac-gc/rom/` or isn't the USA `GAFE01` release.
 - **Black screen with no error:** that's a real bug. Please send the log.
@@ -79,7 +79,13 @@ That's what the upstream PC port is for. See the credits below.
 ## Saves, settings and texture packs
 
 - **Saves** are standard GCI files and work with Dolphin in both directions. Slot A lives in `save/card_a/` and Slot B in `save/card_b/`. With the game closed you can copy them out to back up, delete them for a fresh town, or drop in a Dolphin export. Saves are checksum checked on load, so use a save editor that fixes the checksum.
-- **Settings** are in the in-game menu or `settings.ini`: FPS target, render scale, shadow, particle and acre quality, culling distance, volume and button bindings. Endless acres is on by default, so the camera follows you smoothly from acre to acre instead of stopping at each edge. Turn it off under Video if you want the original camera.
+- **Settings** are in the in-game menu or `settings.ini`. The GAME tab has the gameplay options:
+  - **Endless Acres** (on): the camera follows you smoothly from acre to acre instead of stopping at each edge.
+  - **Bells to Wallet** (off): bell bags you pick up go straight into your wallet when they fit.
+  - **Shop Upgrade** (on): Nook's can grow into Nookington's without a visitor from another town.
+  - **Disable Resetti** (off).
+
+  The other tabs cover FPS target, render scale, shadow, particle and acre quality, culling distance, volume and button bindings. The D-pad also works in menus and speeds up text.
 - **Texture packs** use the Dolphin format (XXHash64 DDS) and go in `texture_pack/`. The [community HD pack](https://forums.dolphin-emu.org/Thread-animal-crossing-hd-texture-pack-version-23-feb-22nd-2026) works, but it costs some performance.
 
 ## Building

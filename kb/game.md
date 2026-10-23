@@ -36,8 +36,16 @@
   shadow the game's. Exit = L+R+Z (L1+R2+R1 on the handhelds). Saves:
   save/card_{a,b}/DobutsunomoriP_F_SAVE.sav; empty NES item reads
   ./nes_roms/*.nes. Clu Clu Land D (FDS) goes back to the room.
+  Audio: fixNES runs on the game thread, but only the AudioProducer
+  thread may write the output ring, so NES samples go through
+  `pc_audio_nes_push` (own SPSC ring) and AIInitDMA mixes them in.
   NOT yet device-tested: check fps (fixNES is ~13 ms/frame on Xbox's
   733 MHz P3), audio, the 4:3 pillarbox, and render scale < 1.
+- PC gameplay settings (GAME tab, pc_overlay.c): borderless_acres
+  (endless acres, default 1, `g_mPlib_wade_disabled`), bells_to_wallet
+  (default 0, m_player_main_pickup.c_inc), shop_no_visitor (default 1,
+  mSP_GetRealShopLevel; the visitor check was dropped unconditionally
+  in Dia's 89061f5, so 1 keeps old behaviour), disable_resetti.
 - **Campsite villagers cannot move in — by design** (verified in source
   2026-07-19 after a player report of talking/playing games for an hour
   with no move-in offer): the camper is special NPC type 0xD05E

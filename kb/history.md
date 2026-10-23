@@ -155,3 +155,18 @@
     (f3134b5), D-pad QoL (clashes with dpad_as_stick).
   - Pre-existing -Warray-bounds in pc_m_card.c (l_keepMail/l_keepDiary
     memcpy at :169/:707/:725, 28-30 bytes past the object) worth a look.
+    (Fixed in the second round below.)
+- **2026-10-23 (second round)** — also compile-checked only:
+  - Endless acres (upstream borderless acres), on by default.
+  - Card B mail/diary buffer overrun fixed; envmixer reverb/right ramp
+    swap fixed (clamp kept); crash report to log.txt + crash.log.
+  - 15 byte-reversed palettes (pink diaries) fixed, verified against
+    the disc.
+  - GAME settings tab: Endless Acres, Bells to Wallet, Shop Upgrade,
+    Disable Resetti (DEBUG tab folded into GAME/PERF). D-pad works in
+    menus and text.
+  - Code review caught a real NES audio race (game thread vs
+    AudioProducer on one ring), fixed with a separate NES ring.
+  - Still needs a device: fishing-tourney placement (retest), one-time
+    dock/home-menu stalls, inventory flicker, NES fps/audio, endless
+    acres fps.

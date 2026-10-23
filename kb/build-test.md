@@ -23,6 +23,18 @@ with `uname -m` → must print `armv7l`. `acgc-smoke-deps:armhf` was once
 silently arm64 and had to be rebuilt via `docker commit` from an explicit
 `--platform linux/arm/v7` container.
 
+## Windows compile check (no Docker)
+
+`python pc/tools/build_windows.py` (needs `pip install cmake ninja`):
+Arm GCC 12.2 for Windows + Debian bookworm armhf SDL2/GLES, fetched and
+SHA-256 checked into `pc/build-toolchain/`, output in
+`pc/build-armhf-win/bin/AnimalCrossing`. Same compiler/glibc/flags as the
+Docker build. Compile and link only: it can't boot the binary, so the
+harness or the device still does that. Toolchain file:
+`pc/cmake/Toolchain-armhf-windows.cmake`. Gotcha: Git Bash heredocs on
+this machine collapse `\\` to `\`, so patch files with a script file,
+not `python - <<EOF`.
+
 ## Test harness (`harness/`)
 
 - `./harness/smoke.sh armhf` — boots the real binary + rom headless in

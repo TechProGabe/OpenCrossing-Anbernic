@@ -98,6 +98,11 @@ dumps an "--- audio diag ---" block into log.txt.
 - `[PC] Special event scheduled: ...`, `[PC] EvMgr wade place: ...`,
   `[PC/TEX] ... EMPTY tlut slot N` — 2026-07-19 diagnostics (Redd-class
   reports, tourney placement, palette-item pink)
+- `=== CRASH: SIGSEGV ... ===` block with pc/lr/sp and a backtrace
+  (2026-10-23): an unrecovered crash. Same text in `crash.log` next to
+  log.txt (fsync'd). Resolve with
+  `arm-none-linux-gnueabihf-addr2line -f -e AnimalCrossing <pc> <lr>`
+  on the exact binary that crashed (non-PIE, has debug info).
 
 **verbose=0 discards stdout entirely (2026-07-19)**: pc_main freopens
 stdout to /dev/null when verbose is off, so every OSReport/printf line —
