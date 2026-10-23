@@ -27,6 +27,9 @@
 #include "pc_save_bswap.h"
 #include "pc_settings.h"
 #include "m_cockroach.h"
+#include "m_all_grow_ovl.h"
+#include "m_home.h"
+#include "lb_rtc.h"
 #include "game.h"
 
 #include <stdio.h>
@@ -234,6 +237,22 @@ static void pc_ensure_save_dirs(void) {
 }
 
 static int pc_save_write_gci_ex(const char* gci_path, const char* tmp_path, int rotate_backups);
+
+/* mCD_get_land_copyProtect (m_card.c, static there) */
+static u16 pc_get_land_copy_protect(void) {
+    u16 code = (u16)RANDOM(0xFFF0);
+    return (u16)(code + 1);
+}
+
+/* Stamps every GC save gets in mCD_SaveHome_bg_set_data (m_card.c): a new
+ * copy-protect code and the travel clock. Without them the next train trip
+ * can see a stale code or travel time. */
+static void pc_save_stamp_land(void) {
+    u16 copy_protect = pc_get_land_copy_protect();
+    Common_Set(copy_protect, copy_protect);
+    Save_Set(copy_protect, copy_protect);
+    Save_Set(travel_hard_time, lbRTC_HardTime());
+}
 
 static int pc_save_write_gci(void) {
     return pc_save_write_gci_ex(PC_GCI_PATH, PC_GCI_TMP_PATH, 1);
@@ -949,6 +968,25 @@ int mCD_InitGameStart_bg(int player_no, int card_private_idx, int start_cond, s3
                 mPr_CopyPrivateInfo(foreigner, &l_mcd_foreigner_file.file.priv);
                 mPr_LoadPak_and_SetPrivateInfo2(foreigner, (u8)player_no);
                 mHm_SetNowHome();
+
+                /* Write the trip into card A as soon as we're home, with the
+                 * reset code armed, so quitting now still keeps what happened
+                 * on the trip (and Resetti still notices). Cond 4 fires on
+                 * both train rides; only write after a real home landing,
+                 * when the merge left player_no in a home slot. No backup
+                 * rotation, same as the reset-code persist above.
+                 * Backported from flyngmt/ACGC-PC-Port 655c746, da75719,
+                 * 5a43291. */
+                if (Common_Get(player_no) != mPr_FOREIGNER && Now_Private != NULL) {
+                    Now_Private->reset_code = (u32)RANDOM_F(USHT_MAX_S);
+                    Now_Private->reset_code++;
+                    pc_save_stamp_land();
+                    if (!pc_save_write_gci_ex(PC_GCI_PATH, PC_GCI_TMP_PATH, 0)) {
+                        OSReport("[PC] InitGameStart: return-home persist failed\n");
+                        if (mounted_chan) *mounted_chan = mCD_SLOT_A;
+                        return mCD_TRANS_ERR_IOERROR;
+                    }
+                }
                 OSReport("[PC] InitGameStart: OUTGOING_FOREIGNER — landed player_no=%d\n",
                          Common_Get(player_no));
             }
@@ -1010,6 +1048,23 @@ int mCD_SaveHome_bg(int param_1, int* chan) {
             Now_Private->reset_code++;
         }
     }
+
+    /* Also from mCD_SaveHome_bg_set_data: a final save makes Wisp's lamp
+     * spirits vanish from the pockets and clears the Money Rock's shine
+     * spot, so neither carries over into the next session. Backported from
+     * flyngmt/ACGC-PC-Port d38db8f + 9cd3de8. */
+    if (param_1 == 0) {
+        mAGrw_ClearMoneyStoneShineGround();
+        if (Now_Private != NULL) {
+            int i;
+            for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
+                if (ITEM_IS_WISP(Now_Private->inventory.pockets[i])) {
+                    mPr_SetPossessionItem(Now_Private, i, EMPTY_NO, mPr_ITEM_COND_NORMAL);
+                }
+            }
+        }
+    }
+    pc_save_stamp_land();
 
     if (slot == mCD_SLOT_B && l_card_b_gci_path[0] != '\0') {
         /* Visiting Card B's town — save to Card B GCI */
