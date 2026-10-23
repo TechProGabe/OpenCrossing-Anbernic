@@ -134,3 +134,24 @@
   at -O1 (it carries no -O at all) and pointed at a `build_pc.sh` that does not
   exist. Tier-1 native macOS build confirmed dead on Apple Silicon (32-bit
   guard, pc/CMakeLists.txt:41) — armhf Docker is the only compile check here.
+- **2026-10-23** — Upstream backport round (flyngmt/ACGC-PC-Port to v0.9.3,
+  Dia2809 branches, OpenCrossing-Xbox NES fixes), all compile-checked only,
+  **none device-tested yet**:
+  - Windows cross-build: `python pc/tools/build_windows.py` (Arm GCC 12.2 +
+    Debian bookworm armhf SDL2/GLES, same glibc as CI). Compile checks no
+    longer need Docker.
+  - Clean upstream fixes: inventory UB, decomp UB batch, Nook softlock
+    return, island house door, weather on restart, radio palette, sounds
+    after travel, mailbox black screen; Dia's villager-house NULL guard.
+  - NES furniture on fixNES (kb/game.md).
+  - Save hand-port: Wisp/Money Rock cleanup on final save, copy-protect +
+    travel clock on every save, card A written on returning home.
+  - `BUGFIXES` defined (own commit; revert alone if feel changes).
+  - Skipped on purpose: upstream delta-time work (we run fixed 60 Hz
+    logic), desktop renderer/shader work, pause menu/keybind editor,
+    borderless acres, Dia's LP64 port. Still open from the triage: Dia's
+    crash backtrace (needs -funwind-tables), post-office invisible mail
+    (repro first), BCn texture-pack decode, rspsim envParam swap
+    (f3134b5), D-pad QoL (clashes with dpad_as_stick).
+  - Pre-existing -Warray-bounds in pc_m_card.c (l_keepMail/l_keepDiary
+    memcpy at :169/:707/:725, 28-30 bytes past the object) worth a look.
