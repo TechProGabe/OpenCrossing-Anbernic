@@ -39,6 +39,12 @@
   Audio: fixNES runs on the game thread, but only the AudioProducer
   thread may write the output ring, so NES samples go through
   `pc_audio_nes_push` (own SPSC ring) and AIInitDMA mixes them in.
+  Threading (2026-10-23): fixNES runs on its own thread one frame ahead
+  (pc_nes_fixnes.c worker; ~18 ms/frame on H700 was over budget on the
+  game thread). Writers to fixNES state wait for idle (pc_fixnes_wait_idle,
+  also before famicom_cleanup's battery-RAM copy). graph.c forces one tick
+  per screen update while g_pc_nes_active. Audio: full-rate APU (no
+  AUDIO_LOWERFREQ, it sounded tinny) + box-filter resample.
   NOT yet device-tested: check fps (fixNES is ~13 ms/frame on Xbox's
   733 MHz P3), audio, the 4:3 pillarbox, and render scale < 1.
 - Options page (pc_settings_menu.c, from OpenCrossing-Xbox): one page
