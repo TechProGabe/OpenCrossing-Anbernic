@@ -59,7 +59,12 @@
   confirmed NOT present in our tree. Entry kept for the analysis; nothing
   to fix.
 
-- **One-time 1.4s hang at the dock/beach, first visit** (2026-07-14 device log,
+- **One-time 1.4s hang at the dock/beach, first visit** — LIKELY FIXED
+  2026-10-23: test 3 caught a 3.1 s hang in sAdo_frame caused by blocking
+  SD writes from unbuffered verbose stdout (sound-trigger prints); the
+  dock case is the same shape (WALK/TRG prints while running). Fixed by
+  gating those prints and buffering stdout. Reopen if a hang shows up
+  with the new build. Original notes: (2026-07-14 device log,
   v0.3.0 build Jul 13 22:35): `[STUTTER] frame 23730: total=1422.4ms
   work=1422.4ms gl=8.4ms tex=0.0ms draws=73` — single isolated frame, session
   otherwise ~60fps (one PERF dip 20.1fps = the window containing it; the

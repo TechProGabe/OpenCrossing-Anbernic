@@ -190,6 +190,9 @@ is line-buffered, so future device logs show the crash context.
 
 - PC_NO_STRIP_CONVERT=1 — disable strip/fan→triangle conversion (P4)
 - PC_NO_BATCH_CULL=1 — disable whole-batch CPU frustum cull (P4)
+- PC_NO_ACTOR_CULL=1 — treat every actor as on screen (pre-2026-10-23
+  behaviour; actor update + draw for everything loaded)
+- PC_AUDIO_DEBUG=1 — per-frame sound-trigger logs ([TRG_*], [WALK*])
 - PC_NO_STREAM_VBO=1 — disable streaming VBO (per-flush orphan fallback)
 - PC_STREAM_SUBDATA=1 — streaming VBO uploads via glBufferSubData not map
 - PC_NO_FPS_PROBE=1 — disable dynamic-fps upward probe
@@ -240,6 +243,23 @@ Changes:
 - fixNES AUDIO_LOWERFREQ (55.9 kHz APU instead of 223.7 kHz).
 Kill switches are CMake options (rebuild): -DPC_LTO=OFF,
 -DPC_OPT_MATH=OFF.
+
+## Hardware test 3 (2026-10-23) → build 4
+
+Test 3 (LTO + math -O2 + verbose): avg 55.7 fps (test 2: 51.5), 10% of
+samples < 45 (test 2: 26%), NES perfect. But one 3.1 s freeze:
+`[PROF] sAdo_frame: 3072ms`, which was blocking SD writes from
+unbuffered verbose stdout (sound-trigger spam, several lines a frame),
+not audio. Fixed: those prints need PC_AUDIO_DEBUG=1, verbose stdout
+is buffered and flushed 1/s.
+
+**Actor culling was off on PC since the first port**:
+Actor_draw_actor_no_culling_check2 returned TRUE, so every actor in
+the loaded acres updated (NO_MOVE_WHILE_CULLED ignored) and drew every
+frame (~650 batches/frame culled late by our batch cull). Restored the
+GC frustum test as upstream did, widened by 1/zoom when zoomed out.
+Kill switch PC_NO_ACTOR_CULL=1. Expect the biggest town gain of the
+round; watch for actors popping at screen edges.
 
 ## Remaining ideas (unimplemented)
 
