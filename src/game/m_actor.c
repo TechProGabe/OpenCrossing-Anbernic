@@ -303,21 +303,33 @@ extern int Actor_draw_actor_no_culling_check(ACTOR* actor) {
 }
 
 extern int Actor_draw_actor_no_culling_check2(ACTOR* actor, xyz_t* camera_pos, f32 camera_w) {
+    int res = FALSE;
+
 #ifdef TARGET_PC
-    if (!g_pc_settings.frustum_cull) {
-        /* Culling disabled: original behavior — always visible */
-        (void)camera_pos;
-        (void)camera_w;
-        return TRUE;
-    }
-    /* World-space XZ distance vs player (see pc_settings: margin + optional max cap). */
+    /* The first PC port returned TRUE here (the GC frustum test misfired on
+     * its early projection), so every actor in the loaded acres updated and
+     * drew every frame, off screen or not. flyngmt/ACGC-PC-Port has since
+     * gone back to the GC test below; so do we. PC_NO_ACTOR_CULL=1 restores
+     * the old always-visible behaviour (kill switch). The Culling setting
+     * adds a distance limit on top. */
     {
+        static int s_no_cull = -1;
+        if (s_no_cull < 0) {
+            const char* e = getenv("PC_NO_ACTOR_CULL");
+            s_no_cull = e != NULL && e[0] == '1';
+        }
+        if (s_no_cull) {
+            return TRUE;
+        }
+    }
+    if (g_pc_settings.frustum_cull) {
         f32 lim = (f32)pc_settings_cull_limit_xz((float)actor->cull_distance, (float)actor->cull_radius);
 
-        return (actor->player_distance_xz <= lim);
+        if (actor->player_distance_xz > lim) {
+            return FALSE;
+        }
     }
-#else
-    int res = FALSE;
+#endif
 
     if (-actor->cull_radius < camera_pos->z && camera_pos->z < actor->cull_distance + actor->cull_radius) {
         f32 m = camera_w < 1.0f ? 1.0f : 1.0f / camera_w;
@@ -331,16 +343,23 @@ extern int Actor_draw_actor_no_culling_check2(ACTOR* actor, xyz_t* camera_pos, f
 #else
         f32 x_edge = 1.0f;
 #endif
+#ifdef TARGET_PC
+        /* Camera zoom (L1 + D-pad) scales the projection in pc_gx.c only;
+         * zoomed out, the screen shows 1/zoom of this NDC range. */
+        f32 y_edge = g_pc_zoom < 1.0f ? 1.0f / g_pc_zoom : 1.0f;
+        x_edge *= y_edge;
+#else
+        f32 y_edge = 1.0f;
+#endif
         int width_OK = (m * (fabsf(camera_pos->x) - actor->cull_width)) < x_edge;
 
         if (width_OK &&
-            (m * (camera_pos->y + actor->cull_height)) > -1.0f && (m * (camera_pos->y - actor->cull_radius) < 1.0f)) {
+            (m * (camera_pos->y + actor->cull_height)) > -y_edge && (m * (camera_pos->y - actor->cull_radius) < y_edge)) {
             res = TRUE;
         }
     }
 
     return res;
-#endif
 }
 
 static void Actor_cull_check(ACTOR* actor) {
