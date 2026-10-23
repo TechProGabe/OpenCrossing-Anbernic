@@ -1,4 +1,7 @@
 #include "m_player_lib.h"
+#ifdef TARGET_PC
+#include "pc_settings.h"
+#endif
 
 #include "libultra/libultra.h"
 #include "m_play.h"

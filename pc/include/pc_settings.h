@@ -36,6 +36,8 @@ typedef struct {
     int reduce_acre_draw;       /* 0=full (up to 4 adjacent), 1=cross (orthogonal only), 2=current acre only */
     int particle_quality;       /* 0=off, 1=25%, 2=50%, 3=75%, 4=full */
     int disable_resetti;  /* 0=normal (Resetti appears on reset), 1=disable reset penalty */
+    int bells_to_wallet;  /* 1 = picked-up bell bags go straight to the wallet when they fit */
+    int shop_no_visitor;  /* 1 = Nook's can reach Nookington's without a visitor from another town */
     int borderless_acres; /* endless acres: 0=original acre-by-acre camera, 1=continuous (default) */
     int nes_aspect;       /* NES emulator aspect: 0=fullscreen stretch, 1=4:3 pillarbox (default) */
 } PCSettings;

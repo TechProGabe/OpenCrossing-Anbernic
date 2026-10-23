@@ -43,6 +43,8 @@ PCSettings g_pc_settings = {
     .particle_quality       = 4,
     .disable_resetti        = 0,
     .borderless_acres       = 1,  /* endless acres on by default */
+    .bells_to_wallet        = 0,
+    .shop_no_visitor        = 1,  /* matches every build since March (the check was removed) */
     .nes_aspect             = 1,
 };
 
@@ -108,6 +110,12 @@ static const char* DEFAULT_SETTINGS =
     "# Endless acres: 1 = the camera follows you smoothly between acres,\n"
     "# 0 = the original acre-by-acre camera (draws a little less)\n"
     "borderless_acres = 1\n"
+    "\n"
+    "# Bell bags you pick up go straight to your wallet when they fit: 0 = off, 1 = on\n"
+    "bells_to_wallet = 0\n"
+    "\n"
+    "# Shop upgrade: 1 = Nookington's needs no visitor from another town, 0 = original rule\n"
+    "shop_no_visitor = 1\n"
     "\n"
     "[Debug]\n"
     "# Verbose logging: 0 = off, 1 = on (log to console)\n"
@@ -226,6 +234,10 @@ static void apply_setting(const char* key, const char* value) {
         if (val >= 0 && val <= 4) g_pc_settings.particle_quality = val;
     } else if (strcmp(key, "disable_resetti") == 0) {
         if (val == 0 || val == 1) g_pc_settings.disable_resetti = val;
+    } else if (strcmp(key, "bells_to_wallet") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.bells_to_wallet = val;
+    } else if (strcmp(key, "shop_no_visitor") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.shop_no_visitor = val;
     } else if (strcmp(key, "borderless_acres") == 0) {
         if (val == 0 || val == 1) g_pc_settings.borderless_acres = val;
     } else if (strcmp(key, "nes_aspect") == 0) {
@@ -341,6 +353,12 @@ void pc_settings_save(void) {
     fprintf(f, "# Endless acres: 1 = the camera follows you smoothly between acres,\n");
     fprintf(f, "# 0 = the original acre-by-acre camera (draws a little less)\n");
     fprintf(f, "borderless_acres = %d\n", g_pc_settings.borderless_acres);
+    fprintf(f, "\n");
+    fprintf(f, "# Bell bags you pick up go straight to your wallet when they fit: 0 = off, 1 = on\n");
+    fprintf(f, "bells_to_wallet = %d\n", g_pc_settings.bells_to_wallet);
+    fprintf(f, "\n");
+    fprintf(f, "# Shop upgrade: 1 = Nookington's needs no visitor from another town, 0 = original rule\n");
+    fprintf(f, "shop_no_visitor = %d\n", g_pc_settings.shop_no_visitor);
     fprintf(f, "\n");
     fprintf(f, "# NES emulator aspect ratio: 0 = stretch to fullscreen, 1 = 4:3 pillarbox\n");
     fprintf(f, "nes_aspect = %d\n", g_pc_settings.nes_aspect);
