@@ -1108,6 +1108,13 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
   if (chkTrigger(BUTTON_B) && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
     msg_p->status_flags |= mMsg_STATUS_FLAG_FAST_TEXT;
   }
+#ifdef TARGET_PC
+  /* Holding the D-pad speeds text up like B (flyngmt/ACGC-PC-Port c693e7f) */
+  if ((chkButton(BUTTON_DUP) || chkButton(BUTTON_DDOWN) || chkButton(BUTTON_DLEFT) || chkButton(BUTTON_DRIGHT)) &&
+      (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
+    msg_p->status_flags |= mMsg_STATUS_FLAG_FAST_TEXT;
+  }
+#endif
 
 #ifdef TARGET_PC
   /* PC: hold L to reveal all text on the current page instantly */
