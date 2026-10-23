@@ -187,6 +187,10 @@ void VIWaitForRetrace(void) {
                      render_fps, speed_pct, pc_gx_draw_call_count);
             SDL_SetWindowTitle(g_pc_window, title);
             pc_overlay_update(render_fps, speed_pct);
+            if (g_pc_verbose) {
+                extern void pc_audio_report(void);
+                pc_audio_report();
+            }
             fflush(stdout); /* verbose log: one write a second */
 
             if (g_pc_verbose) {

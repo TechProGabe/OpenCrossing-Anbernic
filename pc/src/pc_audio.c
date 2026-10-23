@@ -25,6 +25,10 @@
 static s16 ring_buffer[RING_BUF_SAMPLES];
 static SDL_atomic_t ring_write_pos; /* written by audio producer thread */
 static SDL_atomic_t ring_read_pos;  /* written by SDL audio callback */
+/* Diagnostics for the verbose log (pc_audio_report, once a second):
+ * callbacks that ran out of samples, and NES mixes that ran dry. */
+static SDL_atomic_t s_underruns;
+static SDL_atomic_t s_nes_starved;
 static SDL_AudioDeviceID audio_device = 0;
 
 typedef void (*AIDMACallback)(void);
@@ -106,6 +110,7 @@ static void pc_audio_callback(void* userdata, Uint8* stream, int len) {
     }
     if (copy < total_samples) {
         memset(&out[copy], 0, (total_samples - copy) * sizeof(s16));
+        SDL_AtomicIncRef(&s_underruns);
     }
 
     SDL_MemoryBarrierRelease();
@@ -196,6 +201,7 @@ void AIInitDMA(u32 addr, u32 size) {
         nes_primed = 1;
     } else if (nes_primed && nes_avail == 0) {
         nes_primed = 0; /* game left NES, or stalled: build up again */
+        SDL_AtomicIncRef(&s_nes_starved);
     }
     if (!nes_primed) {
         nes_avail = 0;
@@ -217,6 +223,15 @@ void AIInitDMA(u32 addr, u32 size) {
     SDL_MemoryBarrierRelease();
     SDL_AtomicSet(&nes_read_pos, (int)(nrp + nes_avail));
     SDL_AtomicSet(&ring_write_pos, (int)(wp + n_samples));
+}
+
+/* Verbose log line, once a second (pc_vi.c), only when something went wrong. */
+void pc_audio_report(void) {
+    int under = SDL_AtomicSet(&s_underruns, 0);
+    int starved = SDL_AtomicSet(&s_nes_starved, 0);
+    if (under || starved) {
+        printf("[AUDIO] last second: %d device underruns, %d NES queue dry-outs\n", under, starved);
+    }
 }
 
 /* Producer thread only, when jaudio produced nothing: push waiting NES
