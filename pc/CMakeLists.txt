@@ -76,6 +76,7 @@ add_compile_definitions(
     NDEBUG
     _LANGUAGE_C    # Required for N64 GBI/ultratypes headers
     PC_ENHANCEMENTS   # Optional visual improvements (MSAA, etc). Remove to get pure PC port.
+    BUGFIXES          # Decomp's @BUG fixes (OOB reads in letter scoring, & vs &&, NULL checks). Upstream default since April.
 )
 
 # _GNU_SOURCE: required only for pc_main.c (dladdr/Dl_info for image range detection).
