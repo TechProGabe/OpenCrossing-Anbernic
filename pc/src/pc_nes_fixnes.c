@@ -443,7 +443,9 @@ static void emulate_one_frame(void) {
 
 static int fixnes_worker(void* arg) {
     (void)arg;
-    SDL_SetThreadPriority(SDL_THREAD_PRIORITY_HIGH); /* best effort */
+    /* Normal priority on purpose: a raised one let this thread (busy
+     * ~13 of every 16.7 ms) win the CPU over the AudioProducer thread
+     * and the SDL callback, and the sound broke up (hardware test 6). */
     SDL_LockMutex(s_mtx);
     for (;;) {
         uint8_t input;
