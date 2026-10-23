@@ -348,6 +348,14 @@ def process_all(scan_dirs, dry_run=False, scan_only=False):
                 skipped.append((fpath, name, inc_path, 'no size'))
                 continue
 
+            # Dolphin TLUTs are always decoded as native-endian u16 (emu64 marks
+            # the slot native LE), so swap them even when declared as u8.
+            # Missing this left 15 palettes byte-reversed (pink diaries).
+            swap_type = get_swap_type(elem_type)
+            if swap_type == SWAP_NONE and re.search(
+                    r'gsDPLoadTLUT_Dolphin\([^)]*\b' + re.escape(name) + r'\s*\)', content):
+                swap_type = SWAP_U16
+
             # Tentative ROM offset (first occurrence - will be resolved for statics)
             all_rom = rom_offsets.get(name, [])
             if all_rom:
@@ -360,7 +368,7 @@ def process_all(scan_dirs, dry_run=False, scan_only=False):
                 'byte_size': byte_size, 'storage': storage,
                 'inc_path': inc_path, 'align': align_str,
                 'is_static': is_static, 'is_func_local': is_func_local,
-                'match': m, 'swap_type': get_swap_type(elem_type),
+                'match': m, 'swap_type': swap_type,
                 'rom_src': rom_src, 'rom_off': rom_off,
             }
             all_entries.append(entry)
