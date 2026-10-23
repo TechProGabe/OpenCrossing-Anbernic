@@ -309,6 +309,10 @@ static void graph_main(GRAPH* this, GAME* game) {
     PC_DIAG(10, "graph_main: calling game_main (exec=%p)\n", (void*)game->exec);
 #ifdef TARGET_PC
     PC_PROF("game_main", 0, game_main(game));
+    {   /* in-game Options page over the paused scene (pc_pause_menu.c) */
+        extern void pc_pause_menu_draw(GAME* game);
+        pc_pause_menu_draw(game);
+    }
 #else
     game_main(game);
 #endif
