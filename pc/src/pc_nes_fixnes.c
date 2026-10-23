@@ -265,7 +265,11 @@ static void fixnes_capture_audio(void) {
  * Public API
  * ====================================================================== */
 
+static void stop_worker(void);
+
 void pc_fixnes_init(uint8_t *ines_data, int ines_size) {
+    stop_worker(); /* a re-init without cleanup must not race a frame */
+
     /* Reset all state */
     nesPAL = false;
     nesPause = false;
@@ -377,29 +381,42 @@ void pc_fixnes_init(uint8_t *ines_data, int ines_size) {
     fixnes_audio_pos = 0;
 }
 
-void pc_fixnes_write_wram(unsigned int ofs, const uint8_t *data, unsigned int size) {
-    /* Targeted write to fixNES internal RAM — used by update_highscore_raw
-     * to inject saved high scores into the running NES game. */
-    uint8_t *mem = memGetMainMem();
-    if (mem && data && ofs + size <= 0x800)
-        memcpy(mem + ofs, data, size);
-}
+/* ======================================================================
+ * Worker thread
+ *
+ * One NES frame costs ~18 ms on the H700, a little over a 60 Hz frame, so
+ * on the game thread it made the dynamic-fps code batch 2-3 game ticks per
+ * screen update: the NES picture jumped and its audio came in bursts. The
+ * emulator now runs on its own core, one frame ahead: pc_fixnes_frame()
+ * collects the frame the worker just finished and starts the next one with
+ * the newest input (one frame of input latency, like most emulators).
+ *
+ * Only the worker touches fixNES state while it runs. The main thread gets
+ * finished frames through two alternating buffers and RAM through a
+ * snapshot; anything that writes fixNES state (high-score injection, soft
+ * reset, battery RAM save, cleanup) first waits for the worker to go idle.
+ * The worker is also the only producer of NES audio (pc_audio_nes_push).
+ * ====================================================================== */
+#define FB_PIXELS (VISIBLE_DOTS * VISIBLE_LINES)
 
-void pc_fixnes_sync_wram(uint8_t *dst_wram) {
-    /* Copy fixNES internal 2KB RAM → ksNes sp->wram so
-     * nesinfo_update_highscore can detect high-score changes. */
-    uint8_t *src = memGetMainMem();
-    if (src && dst_wram)
-        memcpy(dst_wram, src, 0x800);
-}
+extern int g_pc_verbose;
 
-void pc_fixnes_reset(void) {
-    // Console soft reset (L+R+Start)
-    if (fixnes_initialized)
-        ppuSoftReset();
-}
+static SDL_Thread* s_worker = NULL;
+static SDL_mutex*  s_mtx = NULL;
+static SDL_cond*   s_cond = NULL;
+static int         s_go, s_busy, s_quit;   /* under s_mtx */
+static uint8_t     s_input;                /* input for the frame being started */
+static uint8_t     s_pending_input;        /* main thread: newest buttons */
+static int         s_fb_ready = -1;        /* buffer holding the last finished frame */
+static int         s_fb_next;              /* buffer the worker fills next */
+static uint16_t    s_fb[2][FB_PIXELS];
+static uint8_t     s_wram_snap[0x800];     /* NES RAM at the end of the last frame */
 
-void pc_fixnes_set_input(uint8_t buttons) {
+/* emulate time per frame, for the verbose [NES] line */
+static uint64_t    s_emu_us_sum, s_emu_us_max;
+static int         s_emu_frames;
+
+static void apply_input(uint8_t buttons) {
     /* buttons: bit0=A, bit1=B, bit2=Select, bit3=Start,
      *          bit4=Up, bit5=Down, bit6=Left, bit7=Right
      * fixNES inValReads[]: index 0=A, 1=B, 2=Select, ... 7=Right */
@@ -407,10 +424,8 @@ void pc_fixnes_set_input(uint8_t buttons) {
         inValReads[i] = (buttons >> i) & 1;
 }
 
-uint16_t *pc_fixnes_frame(void) {
-    if (!fixnes_initialized) return textureImage;
-
-    /* Run one full NES frame: cycle CPU/PPU/APU until ppuDrawDone() */
+/* Run one full NES frame: cycle CPU/PPU/APU until ppuDrawDone(). */
+static void emulate_one_frame(void) {
     while (1) {
         if (!cpuCycle())
             break; /* CPU halted */
@@ -424,11 +439,170 @@ uint16_t *pc_fixnes_frame(void) {
             break;
         }
     }
+}
 
-    return textureImage;
+static int fixnes_worker(void* arg) {
+    (void)arg;
+    SDL_SetThreadPriority(SDL_THREAD_PRIORITY_HIGH); /* best effort */
+    SDL_LockMutex(s_mtx);
+    for (;;) {
+        uint8_t input;
+        int slot;
+        uint64_t t0, dt;
+
+        while (!s_go && !s_quit)
+            SDL_CondWait(s_cond, s_mtx);
+        if (s_quit)
+            break;
+        s_go = 0;
+        input = s_input;
+        slot = s_fb_next;
+        SDL_UnlockMutex(s_mtx);
+
+        t0 = SDL_GetPerformanceCounter();
+        apply_input(input);
+        emulate_one_frame();
+        memcpy(s_fb[slot], textureImage, sizeof(s_fb[slot]));
+        dt = (SDL_GetPerformanceCounter() - t0) * 1000000ull / SDL_GetPerformanceFrequency();
+
+        SDL_LockMutex(s_mtx);
+        {
+            uint8_t* mem = memGetMainMem();
+            if (mem) memcpy(s_wram_snap, mem, sizeof(s_wram_snap));
+        }
+        s_fb_ready = slot;
+        s_busy = 0;
+        s_emu_us_sum += dt;
+        if (dt > s_emu_us_max) s_emu_us_max = dt;
+        if (++s_emu_frames == 300) {
+            if (g_pc_verbose)
+                printf("[NES] emulate avg %.1f ms, max %.1f ms (300 frames)\n",
+                       (double)s_emu_us_sum / 300000.0, (double)s_emu_us_max / 1000.0);
+            s_emu_us_sum = s_emu_us_max = 0;
+            s_emu_frames = 0;
+        }
+        SDL_CondBroadcast(s_cond);
+    }
+    SDL_UnlockMutex(s_mtx);
+    return 0;
+}
+
+static int start_worker(void) {
+    if (s_worker) return 1;
+    if (!s_mtx) s_mtx = SDL_CreateMutex();
+    if (!s_cond) s_cond = SDL_CreateCond();
+    if (!s_mtx || !s_cond) return 0;
+    s_go = s_busy = s_quit = 0;
+    s_fb_ready = -1;
+    s_fb_next = 0;
+    s_emu_us_sum = s_emu_us_max = 0;
+    s_emu_frames = 0;
+    s_worker = SDL_CreateThread(fixnes_worker, "fixNES", NULL);
+    if (!s_worker) {
+        fprintf(stderr, "[NES] worker thread failed (%s): emulating on the game thread\n", SDL_GetError());
+        return 0;
+    }
+    return 1;
+}
+
+/* Wait until no frame is in flight. Safe to call with no worker. */
+void pc_fixnes_wait_idle(void) {
+    if (!s_worker) return;
+    SDL_LockMutex(s_mtx);
+    while (s_busy)
+        SDL_CondWait(s_cond, s_mtx);
+    SDL_UnlockMutex(s_mtx);
+}
+
+static void stop_worker(void) {
+    if (!s_worker) return;
+    SDL_LockMutex(s_mtx);
+    while (s_busy)
+        SDL_CondWait(s_cond, s_mtx);
+    s_quit = 1;
+    SDL_CondBroadcast(s_cond);
+    SDL_UnlockMutex(s_mtx);
+    SDL_WaitThread(s_worker, NULL);
+    s_worker = NULL;
+}
+
+void pc_fixnes_write_wram(unsigned int ofs, const uint8_t *data, unsigned int size) {
+    /* Targeted write to fixNES internal RAM — used by update_highscore_raw
+     * to inject saved high scores into the running NES game. */
+    uint8_t *mem;
+    pc_fixnes_wait_idle();
+    mem = memGetMainMem();
+    if (mem && data && ofs + size <= 0x800) {
+        memcpy(mem + ofs, data, size);
+        memcpy(s_wram_snap + ofs, data, size);
+    }
+}
+
+void pc_fixnes_sync_wram(uint8_t *dst_wram) {
+    /* Copy fixNES internal 2KB RAM → ksNes sp->wram so
+     * nesinfo_update_highscore can detect high-score changes. */
+    if (!dst_wram) return;
+    if (s_worker) {
+        SDL_LockMutex(s_mtx);
+        memcpy(dst_wram, s_wram_snap, sizeof(s_wram_snap));
+        SDL_UnlockMutex(s_mtx);
+    } else {
+        uint8_t *src = memGetMainMem();
+        if (src) memcpy(dst_wram, src, 0x800);
+    }
+}
+
+void pc_fixnes_reset(void) {
+    // Console soft reset (L+R+Start)
+    if (fixnes_initialized) {
+        pc_fixnes_wait_idle();
+        ppuSoftReset();
+    }
+}
+
+void pc_fixnes_set_input(uint8_t buttons) {
+    s_pending_input = buttons;
+}
+
+uint16_t *pc_fixnes_frame(void) {
+    int ready;
+
+    if (!fixnes_initialized) return textureImage;
+
+    /* Started here, not in pc_fixnes_init: famicom.cpp loads battery RAM
+     * into emuPrgRAM right after init, before the first frame. */
+    if (!start_worker()) {
+        apply_input(s_pending_input);
+        emulate_one_frame();
+        return textureImage;
+    }
+
+    SDL_LockMutex(s_mtx);
+    while (s_busy)
+        SDL_CondWait(s_cond, s_mtx);
+    if (s_fb_ready < 0) {
+        /* first frame: nothing finished yet, run one and wait for it */
+        s_input = s_pending_input;
+        s_fb_next = 0;
+        s_busy = 1;
+        s_go = 1;
+        SDL_CondBroadcast(s_cond);
+        while (s_busy)
+            SDL_CondWait(s_cond, s_mtx);
+    }
+    ready = s_fb_ready;
+    s_input = s_pending_input;
+    s_fb_next = ready ^ 1;
+    s_busy = 1;
+    s_go = 1;
+    SDL_CondBroadcast(s_cond);
+    SDL_UnlockMutex(s_mtx);
+
+    return s_fb[ready];
 }
 
 void pc_fixnes_cleanup(void) {
+    stop_worker();
     fixnes_failed = 0;
 
     /* Free APU output buffers */
