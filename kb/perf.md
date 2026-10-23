@@ -222,13 +222,33 @@ is line-buffered, so future device logs show the crash context.
   overhead; high `work` others low → game logic (check -O flags first);
   `swap` high → GPU-bound (lower render scale).
 
+## 2026-10-23 round (hardware test 2 → build 3), NOT yet device-tested
+
+Test 2 log (verbose, 100% town, endless acres on): avg 51.5 fps over
+171 samples; indoors 60, outdoors 30-48 with gl only 7-9 ms → game-side
+CPU. NES: work 22-45 ms spikes right after a game starts, then 60.
+Changes:
+- PC_LTO (default ON): -flto on fixNES + pc_nes_fixnes.c (per-NES-cycle
+  cross-TU calls) and pc_gx*.c + emu64 (per-vertex GX calls), link
+  with -flto -O2. Windows toolchain has the plugin; serial LTRANS.
+  LTO surfaced 5 GX colour setters defined with u32 vs the headers'
+  GXColor; fixed (pc_gxcolor_u32).
+- PC_OPT_MATH (default ON): -O2 + emu64's guards + -ffp-contract=off
+  on sys_matrix, sys_math, sys_math3d, sys_math_atan, c_keyframe,
+  m_skin_matrix. -ffp-contract=off keeps float rounding identical to
+  the -O0 build (NEON FMA otherwise). Needs the new-game intro check.
+- fixNES AUDIO_LOWERFREQ (55.9 kHz APU instead of 223.7 kHz).
+Kill switches are CMake options (rebuild): -DPC_LTO=OFF,
+-DPC_OPT_MATH=OFF.
+
 ## Remaining ideas (unimplemented)
 
 - Decode-ahead: warm texture cache during acre-transition wipe (needs a hook
   into game-side room transition; fragile).
 - Worker-thread texture decode (memcpy source at enqueue; GL upload stays on
   main thread). Superseded partially by the budget.
-- LTO (`-flto`): untested; long link under qemu, try locally first.
+- LTO beyond the scoped group (below): game TUs are unoptimized on
+  purpose, so LTO there buys nothing until they are.
 - Uniform buffer objects for TEV state — probably not worth it at current
   uniform counts.
 - Second render thread: no — game is deeply single-threaded.
