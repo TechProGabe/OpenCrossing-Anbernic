@@ -375,6 +375,10 @@ static void graph_main(GRAPH* this, GAME* game) {
 }
 #endif
 
+#ifdef TARGET_PC
+unsigned long long g_pc_scene_dt_us = 0; /* last game_dt, for [SCENE] */
+#endif
+
 extern void graph_proc(void* arg) {
     GRAPH* __graph = &graph_class;
     DLFTBL_GAME* dlftbl = &game_dlftbls[0];
@@ -395,8 +399,31 @@ extern void graph_proc(void* arg) {
         game_class_p = game;
         bzero(game, size);
         GRAPH_SET_DOING_POINT(__graph, GAME_CT);
+#ifdef TARGET_PC
+        {
+            /* one [SCENE] line per scene change (verbose): where the
+             * scene-change hitch goes (hardware test 4) */
+            extern unsigned long long g_pc_scene_step_us[4];
+            extern unsigned long long g_pc_scene_dt_us;
+            unsigned long long t0, t1, t2;
+            memset(g_pc_scene_step_us, 0, sizeof(g_pc_scene_step_us));
+            t0 = pc_prof_now_us();
+            game_ct(game, dlftbl->init, __graph);
+            t1 = pc_prof_now_us();
+            emu64_refresh();
+            t2 = pc_prof_now_us();
+            if (g_pc_verbose) {
+                printf("[SCENE] dt=%.1fms ct=%.1fms (read=%.1f field=%.1f actors=%.1f museum=%.1f) refresh=%.1fms\n",
+                       g_pc_scene_dt_us / 1000.0, (t1 - t0) / 1000.0,
+                       g_pc_scene_step_us[0] / 1000.0, g_pc_scene_step_us[1] / 1000.0,
+                       g_pc_scene_step_us[2] / 1000.0, g_pc_scene_step_us[3] / 1000.0,
+                       (t2 - t1) / 1000.0);
+            }
+        }
+#else
         game_ct(game, dlftbl->init, __graph);
         emu64_refresh();
+#endif
         GRAPH_SET_DOING_POINT(__graph, GAME_CT_FINISHED);
 
         while (game_is_doing(game) && g_pc_running) {
@@ -443,7 +470,15 @@ extern void graph_proc(void* arg) {
         dlftbl = game_get_next_game_dlftbl(game);
         GRAPH_SET_DOING_POINT(__graph, GAME_18);
         GRAPH_SET_DOING_POINT(__graph, GAME_DT);
+#ifdef TARGET_PC
+        {
+            unsigned long long t0 = pc_prof_now_us();
+            game_dt(game);
+            g_pc_scene_dt_us = pc_prof_now_us() - t0;
+        }
+#else
         game_dt(game);
+#endif
         GRAPH_SET_DOING_POINT(__graph, GAME_DT_FINISHED);
         free(game);
         game_class_p = NULL;
