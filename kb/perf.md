@@ -1,16 +1,13 @@
 # Performance knowledge & playbook
 
-## Current state (2026-07-13, post-P4, v0.3.0)
+## Current state (v0.6.0, 2026-10-23)
 
-Device log (P4 build, 183 gameplay PERF samples): **avg 56.4 fps, median
-59.3, 78% of samples ≥55** (v0.2.0: avg 52.4, 63% ≥55, dips to 30).
-Worst sustained dips now 41-44 fps during heaviest acre streaming; user
-reports "~20 fps faster on average" feel. Speed avg 98.4%. Zero crashes,
-zero GL errors. **GL is no longer the bottleneck**: gl avg 5.4ms (was
-9.1), draws avg 114.6 (was 271), and ALL 75 gameplay stutters are
-work-dominated (median 24ms, max 114ms; zero gl-dominated). Remaining
-levers are game-side: per-TU -O2 on loader/decompression TUs, iso
-read-ahead, CPU pre-transform (see #14 findings).
+Town averages ~58.6 fps on the RG-34XX SP (hardware test 4: 5 of 201
+one-second samples under 45), indoors a steady 60. The big v0.6.0 win was
+restoring the game's own actor culling (off on PC since the first port);
+scoped LTO and -O2 on the math TUs helped too (see the 2026-10-23 sections
+below). Remaining: a 70-115 ms build at each scene change ([SCENE] log line).
+NES runs at a steady 60 on its own thread (~13 ms a frame).
 
 ## Fixed so far (chronological, 2026-07-13)
 

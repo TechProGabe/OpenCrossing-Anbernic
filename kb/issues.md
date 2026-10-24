@@ -2,6 +2,11 @@
 
 ## Open
 
+- **Scene-change hitch, 70-115 ms** (minor, 2026-10-23): walking out of a
+  house or a title-demo cut builds the new scene between frames. v0.6.0
+  logs a `[SCENE]` line per change (verbose) with the step split; build 5
+  showed ct=67 ms with field 7 ms and actors 6 ms, so most of it is elsewhere
+  in play_init or the first frame. Users report it as barely noticeable.
 - **Villagers "fishing on land" during the fishing tournament**
   (2026-07-19 user report). Tourney flow: `anglingtournament_start`
   (ac_event_manager.c:2722) reserves the pool block and spawns 5 NPCs;
@@ -17,26 +22,6 @@
   INSTRUMENTED 2026-07-19: `[PC] EvMgr wade place: event=N actor=0x....
   block=(x,z) unit=(x,z)` logs every wade placement — compare against
   the pool block on the town map.
-
-- **Green diary furniture renders hot pink** — FIXED on dev 2026-10-23
-  (412e8cd): 15 u8-declared palettes were loaded without the u16 swap
-  every Dolphin TLUT needs (emu64 marks the slot native LE), so they
-  decoded byte-reversed. Confirmed by decoding the diary palettes from
-  the GAFE01 disc both ways. gen_runtime_assets.py now swaps anything
-  gsDPLoadTLUT_Dolphin loads. Device check pending. Original notes:
-  (2026-07-19 user report): one diary recolor ("listed as green") draws in
-  the placeholder pink used for graphical glitches; other recolors fine.
-  Furniture recolors share one texture and differ by TLUT palette, so the
-  lead is the TLUT/recolor path, not the texture itself: emu64
-  dl_G_LOADTLUT reuse-detection (emu64.c:3841-3855 first-word heuristic —
-  a palette whose first u16 matches the cached one but differs later would
-  be wrongly kept), TLUT-keyed texture cache in pc_gx_texture.c
-  (GXLoadTexObj tlut_key/tlut_hash_key), or an unhandled palette format
-  variant. Needs the item id + repro save to pin down.
-  INSTRUMENTED 2026-07-19: `[PC/TEX] C4/C8 texture WxH draws with EMPTY
-  tlut slot N` (pc_gx_texture.c GXLoadTexObj, capped at 16 lines) fires
-  if a palette item draws before its TLUT is loaded — grep the device
-  log right after reproducing the pink item.
 
 - **Design Editor SIGSEGV (upstream Dia2809/ACGC-PC-Port#18) — our code
   path looks NOT affected; needs a device test to confirm** (2026-07-19,
@@ -59,56 +44,6 @@
   confirmed NOT present in our tree. Entry kept for the analysis; nothing
   to fix.
 
-- **One-time 1.4s hang at the dock/beach, first visit** — LIKELY FIXED
-  2026-10-23: test 3 caught a 3.1 s hang in sAdo_frame caused by blocking
-  SD writes from unbuffered verbose stdout (sound-trigger prints); the
-  dock case is the same shape (WALK/TRG prints while running). Fixed by
-  gating those prints and buffering stdout. Reopen if a hang shows up
-  with the new build. Original notes: (2026-07-14 device log,
-  v0.3.0 build Jul 13 22:35): `[STUTTER] frame 23730: total=1422.4ms
-  work=1422.4ms gl=8.4ms tex=0.0ms draws=73` — single isolated frame, session
-  otherwise ~60fps (one PERF dip 20.1fps = the window containing it; the
-  avg=80.7ms EMA is fully explained by the one spike). Footstep SEs show WOOD
-  (0x4204) right up to the hang, GRASS (0x4201) right after → fired while
-  on/leaving the dock planks. Systematically ruled out by source trace:
-  GPU/shader (gl=8.4ms, zero compiles logged near it), texture decode
-  (tex=0.0), runtime disc I/O (acre geometry is RAM-resident from boot via
-  pc_assets; forest_1st/2nd.arc mounted to malloc'd ARAM at boot; runtime
-  "ARAM DMA" is pure memcpy pc_aram.c:41; audiorom.img 8.3MB fully preloaded
-  in pc_neos_init_sync at boot, jaudio runtime bank loads are memcpys on the
-  AudioProducer SDL thread; JKRDecomp/JKRDvdRipper callers are boot-only),
-  GCI save (only written at session end). Conclusion: a silent one-shot CPU
-  burst inside a single game-logic tick in -O0 decomp code (beach item/actor
-  born pass, event-manager beach scans ac_event_manager.c:860-907, or similar
-  first-visit path), or an external stall (stdout is SD-backed and WALK/TRG
-  debug prints fire several lines per frame while dashing). mFI shell
-  placement (m_field_info.c:2990-3155) examined and exonerated — loops are
-  bounded small. NOT reproducible on 2nd visit (one-time), so instrument
-  first: DONE 2026-07-14 — `[PROF]` slow-phase profiler shipped on dev
-  (see kb/perf.md Measuring). Next SD-card log with the hang will carry
-  `[PROF]` lines naming the phase (and actor profile id if it's a ct/mv).
-  Then per-TU -O2 (emu64 template) on m_field_info.c / m_field_make.c /
-  ac_event_manager.c + actor spawn path — attacks this AND the sustained
-  acre-streaming dips regardless of which candidate wins.
-
-- **FPS below 60 in heavy scenes** (updated 2026-07-13 post-P4, v0.3.0):
-  P4 (strip conversion + whole-batch CPU cull, kb/perf.md #14)
-  DEVICE-VERIFIED: avg 56.4 fps, median 59.3, 78% ≥55; worst sustained
-  dips 41-44 fps during heaviest acre streaming. **GL is no longer the
-  bottleneck** — gl avg 5.4ms, all 75 gameplay stutters work-dominated
-  (median 24ms, max 114ms), zero gl-dominated. Remaining work to 60
-  stable, in order of expected value:
-  (a) **per-TU -O2 on loader/decompression + m_field/actor TUs** —
-  work-dominated stutters and the 41-44 fps dips are game logic in -O0
-  decomp code (emu64 -O2 template proven safe, kb/perf.md #8);
-  (b) **iso read-ahead thread** — sync SD reads inside work spikes;
-  (c) **CPU pre-transform at accumulation** — matrix loads are 41% of
-  batch breaks and merged=0 all session; pre-transform would let GXBegin
-  merging finally fire (tex breaks 30% remain, so gains capped — measure
-  first). Cull-scan cost at ~500 submitted batches is part of the dip
-  frames; a cheap object-space AABB cache keyed on batch identity could
-  cut it if profiling says so.
-
 - **Inventory-open aspect flicker** (2026-07-13): opening the inventory makes
   the game EFB-capture the frame and redraw it as a background; during the
   handoff emu64's NOOP markers switch `g_pc_widescreen_stretch`
@@ -118,64 +53,7 @@
   emu64.c `dl_G_NOOP` (marker handling), m_play.c ~688/738 (marker emission),
   pc_gx.c GXSetProjection/GXSetViewport mode-2 remap, EFB capture path in
   pc_gx_copy_tex_execute / GXLoadTexObj bypass. Fix needs device A/B.
-- **Main-area perf — NEXT TARGET: per-draw GL overhead** (2026-07-13,
-  measured on device): steady frames 42ms with gl=25ms at 491-600 draws
-  (~40-50µs/draw), tex=0.0 (texture pipeline fully solved), speed 94-100%
-  (dynamic fps working). emu64 -O2 experiment SHIPPED SAFE (train passes,
-  crashes=0) and improved home area 36→35-40 fps. PERF-tab toggles don't
-  matter because draw dispatch, not scene volume, is the cost.
-  **P1 GX state-set dedup: SHIPPED + DEVICE-VERIFIED 2026-07-13** (kb/perf.md
-  #9) — playtest: much better loading, acres load right, smoother, better 1%
-  lows, ~30 fps avg walking while acres load. log.txt PERF numbers (draws,
-  gl ms vs 491-600/15-26ms baseline) still worth grabbing next SD mount.
-  Triage switch PC_NO_STATE_DEDUP=1.
-  **P2 — per-program uniform value shadowing: SHIPPED + DEVICE-VERIFIED
-  2026-07-13** (kb/perf.md #10, v0.2.0). Kill switch PC_NO_UNIFORM_SHADOW=1.
-  Re-measure (fresh log.txt PERF numbers on the P2 build) before deciding
-  on (P3) per-draw glBufferData orphan → one big VBO with offset
-  accumulation per frame (fewer/larger draws after P1 may deflate this).
-- **One-time 8.7s stall on home menu** (device log frame 606: work=8746ms,
-  gl=13ms, tex=0): pure game-side stall — synchronous iso reads
-  (pc_disc/pc_dvd fread on SD) and/or decompression in unoptimized decomp
-  code during menu/save load. Leads: add timing counters to pc_dvd_read /
-  pc_disc reads, consider read-ahead thread or optimizing the decomp's
-  decompression TUs (same per-TU -O2 pattern as emu64).
-  2026-07-13 P1-build log deep-dive: the 3.2s "stall" is frame 3 of BOOT —
-  vanilla's intentional 2500ms sleep ("ニンテンドー発生タイムラグまで寝てます")
-  plus sound_initial2/init, NOT a gameplay stall. Real gameplay stutter
-  classes: (a) 264 work-dominated moderates (avg 42ms total, 50 above
-  50ms, max 148ms) — game logic in -O0 decomp; lever = per-TU -O2
-  expansion (loader/decompression/m_field TUs); (b) gl-dominated spikes,
-  worst were the 24 mid-session shader compiles — fixed by 101-config
-  seed (kb/perf.md #12).
-
-- **Log noise: `[PC] toNextLand: l_keepSave not set, aborting`** — FIXED
-  on dev 2026-10-23 (line removed). (2026-07-29,
-  cosmetic). `mCD_toNextLand` (pc/src/pc_m_card.c:1242) runs on every play-scene
-  teardown (`m_play.c:393`), not just travel, so this line appears once per
-  scene change in every device log — it looks alarming in user-submitted logs
-  (7 of them in issue #6's) and means nothing. Downgrade to verbose-only or
-  drop when next touching that file.
-
 ## Port limitations (by design — answer reports with these, don't reopen)
-
-- **NES/famicom furniture always said "I don't have any software"**
-  (RESOLVED on dev 2026-10-23: fixNES backport, see kb/game.md. History
-  below.) (2026-07-19, upstream Dia2809/ACGC-PC-Port#29 + our user report "SNES
-  only spawning Donkey Kong / game not working"): the GC NES core
-  (src/static/Famicom/ks_nes_core.cpp — `ksNesResetAsm`,
-  `ksNesEmuFrameAsm`) is PowerPC inline assembly; it cannot build for
-  ARM/x86, so pc/CMakeLists.txt:351 excludes Famicom/ entirely and
-  `ac_my_room.c:2111` `#ifdef TARGET_PC` routes every NES furniture
-  interaction to `aMR_MSG_STATE_NO_PACK_NO_DATA` (now logs
-  `[PC] NES furniture: emulator not available on PC`). Everything else is
-  present and portable: item→ROM table (`fFC_game_table[]`
-  ac_famicom_common.c:78, 19 titles + hayakawa rom_no=20), ROM data in
-  the user's own ISO (/FAMICOM/*.szs), management code famicom.cpp, stubs
-  pc_stubs.c:82-98, GL-restore scaffolding `pc_gx_restore_after_nes()`
-  (pc_gx.c:522, currently zero callers). Enabling would mean porting the
-  6502+PPU core (weeks) or wiring an external emulator — tracked as a
-  possible future feature, not a bug.
 
 - **Campsite (tent/igloo) villagers can never move in** — game design,
   same as real GC hardware; full source proof in kb/game.md. Not RNG,
@@ -209,6 +87,20 @@
   all save paths are cwd-relative.
 
 ## Resolved (keep for pattern-matching)
+
+- **Low fps in town / work-dominated stutters** (RESOLVED v0.6.0): actor
+  culling had been forced off on PC since the first port; restoring the GC
+  frustum test plus scoped LTO and -O2 math took town from ~51 to ~58.6 fps.
+  Old per-draw/GL notes are in kb/perf.md.
+- **Multi-second hangs (3.1 s in test 3, the July 1.4 s dock and 8.7 s menu
+  cases)** (RESOLVED v0.6.0, likely all one cause): unbuffered verbose stdout
+  blocking on SD writeback while the sound code printed several lines a
+  frame. Prints gated (PC_AUDIO_DEBUG=1), stdout buffered.
+- **Green diary renders hot pink** (RESOLVED v0.6.0): 15 u8-declared
+  palettes loaded without the u16 swap Dolphin TLUTs need.
+- **NES furniture said "I don't have any software"** (RESOLVED v0.6.0):
+  fixNES backport, see kb/game.md.
+- **toNextLand "aborting" log line on every scene change** (RESOLVED v0.6.0).
 
 - **"Redd never sends the visit letter"** (reported + user-confirmed
   NOT A BUG same day, 2026-07-19): Redd showed up eventually. Special

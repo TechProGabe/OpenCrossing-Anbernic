@@ -11,7 +11,7 @@
 
 Animal Crossing for the GameCube, running natively on Anbernic handhelds. No emulator. The game's own decompiled C code runs on the handheld's CPU, and a translation layer turns GameCube graphics calls into OpenGL ES.
 
-It boots, renders and saves on real hardware at around 56 fps on an RG-34XX SP. It's still early, so expect the odd bug and save often.
+It runs close to 60 fps in town on an RG-34XX SP, and the NES games in your house work too. Expect the odd bug and save often.
 
 Maintained by [TechProGabe](https://github.com/TechProGabe) and [Dia2809](https://github.com/Dia2809).
 
@@ -59,7 +59,7 @@ When reporting a bug, attach `ports/ac-gc/log.txt`, plus `crash.log` from the sa
 ## FAQ
 
 **Do the NES games work?**
-Yes, on `dev` builds and from the next release. The original game's emulator is PowerPC assembly, so the port runs the games with [fixNES](https://github.com/FIX94/fixNES) instead. Hold L1, R1 and R2 to go back to your room. High scores save. Clu Clu Land D is a Famicom Disk System game and won't start. The plain NES item plays `.nes` files you put in `ports/ac-gc/nes_roms/`.
+Yes. The original game's emulator is PowerPC assembly, so the port runs the games with [fixNES](https://github.com/FIX94/fixNES) instead. Hold L1, R1 and R2 to go back to your room. High scores save. Clu Clu Land D is a Famicom Disk System game and won't start. The plain NES item plays `.nes` files you put in `ports/ac-gc/nes_roms/`.
 
 **The gyroid at my door says "I am currently processing data" and won't save. Is saving broken?**
 No. That's the gyroid saying no, same as on GameCube. Finish Nook's part-time job or chat with villagers until one remembers you, and saving unlocks. If a save really fails, the log will have a `GCI save:` line saying why.
