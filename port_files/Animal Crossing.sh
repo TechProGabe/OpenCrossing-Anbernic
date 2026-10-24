@@ -47,12 +47,19 @@ EOF
 fi
 
 export XDG_DATA_HOME="$CONFDIR"
-export LD_LIBRARY_PATH="/usr/lib32:$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
-# muOS audio is PipeWire; 32-bit clients need the lib32 plugin paths set
-# explicitly or pw_loop_new fails with "can't make support.system handle".
-[ -d /usr/lib32/spa-0.2 ] && export SPA_PLUGIN_DIR=/usr/lib32/spa-0.2
-[ -d /usr/lib32/pipewire-0.3 ] && export PIPEWIRE_MODULE_DIR=/usr/lib32/pipewire-0.3
-export SDL_AUDIODRIVER=pipewire,alsa,dsp
+export LD_LIBRARY_PATH="/usr/lib32:/usr/lib:$GAMEDIR/libs.${DEVICE_ARCH}:$LD_LIBRARY_PATH"
+
+if [ -d /usr/lib32/spa-0.2 ]; then
+  # muOS: 32-bit PipeWire clients need the lib32 plugin paths set explicitly
+  # or pw_loop_new fails with "can't make support.system handle".
+  export SPA_PLUGIN_DIR=/usr/lib32/spa-0.2
+  [ -d /usr/lib32/pipewire-0.3 ] && export PIPEWIRE_MODULE_DIR=/usr/lib32/pipewire-0.3
+  export SDL_AUDIODRIVER=pipewire,alsa,dsp
+else
+  # MinUI and friends: no 32-bit PipeWire, plain ALSA through the default PCM.
+  unset SPA_PLUGIN_DIR PIPEWIRE_MODULE_DIR
+  export SDL_AUDIODRIVER=alsa
+fi
 
 # Audio diagnostics for log.txt while we chase the silence bug
 echo "--- audio diag ---"
