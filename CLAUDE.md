@@ -55,10 +55,10 @@ cp pc/build-armhf/bin/AnimalCrossing "/Volumes/ROMS/ports/ac-gc/AnimalCrossing" 
 
 ## Status (2026-10-23)
 
-v0.5.0 is the latest release (main). dev carries a large untested batch:
-NES on fixNES, endless acres, upstream bug fixes, save/travel fixes,
-BUGFIXES, the pink-palette fix, a crash reporter, GAME-tab settings and
-D-pad navigation (kb/history.md 2026-10-23). Everything compiles for
-armhf; **none of it has run on a device yet** — do a hardware pass
-before tagging v0.6.0. A GAFE01 disc image for data checks is the Xbox
-port's CISO on the NAS (P:/AC-Xbox/...); never copy it into the repo.
+v0.6.0 is being released from this state: NES on fixNES (own thread),
+endless acres, the Options page, loading screen, actor culling restored
+(~58.6 fps town), upstream and own bug fixes. Hardware-tested across eight
+rounds on the RG-34XX SP (kb/history.md v0.6.0). Open: the scene-change
+hitch ([SCENE]), fishing-tourney and inventory-flicker retests. A GAFE01
+disc image for data checks is the Xbox port's CISO on the NAS
+(P:/AC-Xbox/...); never copy it into the repo.

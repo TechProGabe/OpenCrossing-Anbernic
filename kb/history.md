@@ -134,49 +134,38 @@
   at -O1 (it carries no -O at all) and pointed at a `build_pc.sh` that does not
   exist. Tier-1 native macOS build confirmed dead on Apple Silicon (32-bit
   guard, pc/CMakeLists.txt:41) — armhf Docker is the only compile check here.
-- **2026-10-23** — Upstream backport round (flyngmt/ACGC-PC-Port to v0.9.3,
-  Dia2809 branches, OpenCrossing-Xbox NES fixes), all compile-checked only,
-  **none device-tested yet**:
-  - Windows cross-build: `python pc/tools/build_windows.py` (Arm GCC 12.2 +
-    Debian bookworm armhf SDL2/GLES, same glibc as CI). Compile checks no
-    longer need Docker.
-  - Clean upstream fixes: inventory UB, decomp UB batch, Nook softlock
-    return, island house door, weather on restart, radio palette, sounds
-    after travel, mailbox black screen; Dia's villager-house NULL guard.
-  - NES furniture on fixNES (kb/game.md).
-  - Save hand-port: Wisp/Money Rock cleanup on final save, copy-protect +
-    travel clock on every save, card A written on returning home.
-  - `BUGFIXES` defined (own commit; revert alone if feel changes).
-  - Skipped on purpose: upstream delta-time work (we run fixed 60 Hz
-    logic), desktop renderer/shader work, pause menu/keybind editor,
-    borderless acres, Dia's LP64 port. Still open from the triage: Dia's
-    crash backtrace (needs -funwind-tables), post-office invisible mail
-    (repro first), BCn texture-pack decode, rspsim envParam swap
-    (f3134b5), D-pad QoL (clashes with dpad_as_stick).
-  - Pre-existing -Warray-bounds in pc_m_card.c (l_keepMail/l_keepDiary
-    memcpy at :169/:707/:725, 28-30 bytes past the object) worth a look.
-    (Fixed in the second round below.)
-- **2026-10-23 (second round)** — also compile-checked only:
-  - Endless acres (upstream borderless acres), on by default.
-  - Card B mail/diary buffer overrun fixed; envmixer reverb/right ramp
-    swap fixed (clamp kept); crash report to log.txt + crash.log.
-  - 15 byte-reversed palettes (pink diaries) fixed, verified against
-    the disc.
-  - GAME settings tab: Endless Acres, Bells to Wallet, Shop Upgrade,
-    Disable Resetti (DEBUG tab folded into GAME/PERF). D-pad works in
-    menus and text.
-  - Code review caught a real NES audio race (game thread vs
-    AudioProducer on one ring), fixed with a separate NES ring.
-  - Still needs a device: fishing-tourney placement (retest), one-time
-    dock/home-menu stalls, inventory flicker, NES fps/audio, endless
-    acres fps.
-- **2026-10-23 hardware test 1** (RG-34XX SP, 100% town save): NES runs
-  fine, Clu Clu Land D works, NES audio slightly choppy, two settings
-  menus confusing, ~40 fps dip for a moment on walking out of a house
-  (also in v0.5.0). log.txt had no perf lines (verbose was 0).
-  Round 3 answer: NES mix queue primed + rate control + linear
-  resample; one Options page (Xbox style) from title and Select; title
-  Start Game / Options / Exit to OS; loading screen with logo and
-  progress; Bells to Wallet on by default. House-exit dip: texture
-  cache ruled out (only cleared at shutdown); needs a verbose log
-  ([STUTTER] tex/gl/work split, [PROF] phase) before changing code.
+
+## v0.6.0 (2026-10-23)
+
+One long session, eight hardware tests on the RG-34XX SP (100% town save).
+
+- **Upstream backports** (flyngmt/ACGC-PC-Port to v0.9.3, Dia2809's branches,
+  OpenCrossing-Xbox): NES on fixNES, endless acres (borderless acres), the
+  clean bug fixes (inventory UB, decomp UB batch, Nook softlock, island house
+  door, weather on restart, radio palette, sounds after travel, mailbox black
+  screen, villager-house NULL), the Wisp/Money Rock/travel save hand-port,
+  BUGFIXES, bells to wallet + its money-dupe fix, D-pad navigation, Lennart
+  Hennigs' localized menu labels (#5) and PR #7's launcher audio detection.
+- **Our own fixes**: 15 byte-reversed palettes (pink diaries), Card B buffer
+  overrun, envmixer ramp swap, crash reports (log.txt + crash.log),
+  toNextLand log noise.
+- **Performance**: actor culling had been off since the first PC port
+  (every loaded actor updated and drew every frame); restored the GC frustum
+  test. Scoped LTO (fixNES, renderer + emu64), -O2 on the math TUs (with
+  -ffp-contract=off), and the per-frame sound debug prints gated. Town went
+  from ~51 to ~58.6 fps average (test 4: 5 of 201 samples under 45).
+- **Hangs**: a 3.1 s freeze was blocking SD writes from unbuffered verbose
+  stdout; verbose stdout is now buffered (flushed 1/s).
+- **NES**: fixNES runs on its own thread one frame ahead (~13 ms a frame on
+  H700), one tick per screen update while NES runs, full-rate APU with a
+  box-filter resample, primed mix queue, gentle averaged rate control. The
+  worker must stay at normal priority, and the rate control must not react
+  to the chunky queue readings (both broke the audio on device).
+- **UI**: one Options page (OpenCrossing-Xbox's notebook style) from the
+  title screen and Select in game; title Start Game / Options / Exit to OS;
+  loading screen with the logo and progress.
+- **Tooling**: native Windows cross-build (pc/tools/build_windows.py).
+- **Not the port**: the power LED going out while the game runs (v0.5.0
+  does it too; see kb/device.md).
+- **Left open**: scene changes still cost 70-115 ms (logged as [SCENE]);
+  fishing-tourney placement and inventory flicker need retests.
