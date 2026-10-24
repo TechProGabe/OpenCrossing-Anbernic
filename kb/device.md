@@ -76,6 +76,14 @@ lives in the launcher: when the dirs exist it sets
 the ALSA default through the same broken 32-bit pw plugin). The launcher also
 dumps an "--- audio diag ---" block into log.txt.
 
+## Power LED goes out while the game runs (2026-10-23)
+
+User report on the RG-34XX SP (muOS): the power LED stops when the game
+boots. Not the port: the July v0.5.0 binary does the same, and neither the
+binary nor the launcher writes to /sys or any LED/PMIC node (the only
+platform call is PortMaster's pm_platform_helper). Point reports at muOS
+settings / a muOS or PortMaster update.
+
 ## Reading device logs
 
 `ports/ac-gc/log.txt` after a session. Useful lines:
